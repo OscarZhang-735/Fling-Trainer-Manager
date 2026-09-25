@@ -1,11 +1,23 @@
 # coding:utf-8
+import re
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 from lxml import etree
 from bs4 import BeautifulSoup as bs
 
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urljoin, urlsplit, urldefrag
 
 BLANK_IMG = "BLANK_IMG"
+
+
+def _search_text(text):
+    return re.sub(r"[\W_]+", " ", unicodedata.normalize("NFKC", text).casefold()).strip()
+
+
+def _matches(name, keywords):
+    return bool(keywords) and all(word in _search_text(name) for word in keywords)
 
 
 def _html(text):
@@ -68,39 +80,68 @@ class Spider:
 
     class Search:
         def __init__(self, keyword):
-            self.keyword = keyword.split(" ")
-            self.search_url = "https://flingtrainer.com/?" + urlencode({"s": keyword})
+            self.keyword = _search_text(keyword).split()
+            self.search_url = "https://flingtrainer.com/all-trainers/"
             self.sub_names = []
             self.sub_links = []
             self.sub_images = []
-            self.text = Spider.crawler(self.search_url)
+            self.text = Spider.crawler(self.search_url) if self.keyword else ""
             if self.text != "error":
                 self.parser()
             else:
                 Spider.error()
 
         def run(self):
-            re_list = []
-            for i in range(len(self.sub_links)):
-                if "My Trainers Archive" in self.sub_names[i]:
-                    break
-                print(f"Name: {self.sub_names[i]} | Link: {self.sub_links[i]} | Image: {self.sub_images[i]}")
-                re_list.append([self.sub_names[i], self.sub_links[i], self.sub_images[i], "COMMON"])
-            return re_list
+            return [[name, link, image, "COMMON"]
+                    for name, link, image in zip(self.sub_names, self.sub_links, self.sub_images)
+                    if _matches(name, self.keyword)]
 
         def parser(self):
             self.sub_names, self.sub_links, self.sub_images = [], [], []
             html = _html(self.text)
             if html is None:
                 return
-            for article in html.xpath("//div[@class='content']/article"):
-                names = article.xpath("./div[2]/h2/a/text()")
-                links = article.xpath("./div[2]/h2/a/@href")
-                images = article.xpath("./div[1]/div/a/img/@src")
-                if names and links:
-                    self.sub_names.append(names[0])
-                    self.sub_links.append(links[0])
-                    self.sub_images.append(images[0] if images else BLANK_IMG)
+            seen = set()
+            for anchor in html.xpath("//a[@href]"):
+                name = " ".join("".join(anchor.itertext()).split())
+                link = urldefrag(urljoin(self.search_url, anchor.get("href")))[0]
+                parsed = urlsplit(link)
+                if (parsed.scheme not in ("http", "https")
+                        or parsed.hostname != "flingtrainer.com"
+                        or not parsed.path.startswith("/trainer/")
+                        or not name.casefold().endswith(" trainer")
+                        or link in seen):
+                    continue
+                seen.add(link)
+                self.sub_names.append(name)
+                self.sub_links.append(link)
+                self.sub_images.append(BLANK_IMG)
+
+    class SearchAll:
+        """Search both catalogs concurrently, keeping their download types intact."""
+
+        def __init__(self, keyword):
+            self.results = []
+            self.failed_sources = []
+            if not _search_text(keyword):
+                return
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                searches = [
+                    ("All Trainers", executor.submit(Spider.Search, keyword)),
+                    ("Archive", executor.submit(Spider.ArchivedDownload, keyword)),
+                ]
+                seen = set()
+                for source, future in searches:
+                    search = future.result()
+                    if not search.text or search.text == "error":
+                        self.failed_sources.append(source)
+                    for row in search.run():
+                        if row[1] not in seen:
+                            seen.add(row[1])
+                            self.results.append(row)
+
+        def run(self):
+            return [row[:] for row in self.results]
 
     class Download:
         def __init__(self, detail_url):
@@ -149,8 +190,8 @@ class Spider:
             self.name_list = []
             self.link_list = []
             self.url = "https://archive.flingtrainer.com/"
-            self.text = Spider.crawler(self.url)
-            self.keyword = keyword.split(" ")
+            self.keyword = _search_text(keyword).split()
+            self.text = Spider.crawler(self.url) if self.keyword else ""
             self.result_name = []
             self.result_link = []
             self.parser()
@@ -160,14 +201,13 @@ class Spider:
             html = _html(self.text)
             if html is None:
                 return
-            for link in html.xpath("//table[@class='files']//tr/td/a[@href]"):
+            for link in html.xpath("//table[contains(concat(' ', normalize-space(@class), ' '), ' files ')]//tr/td/a[@href]"):
                 self.name_list.append("".join(link.itertext()))
                 self.link_list.append(link.get("href"))
 
         def run(self):
-            keywords = [keyword.lower() for keyword in self.keyword]
             matches = [(name, link) for name, link in zip(self.name_list, self.link_list)
-                       if all(keyword in name.lower() for keyword in keywords)]
+                       if _matches(name, self.keyword)]
             self.result_name = [name for name, _ in matches]
             self.result_link = [link for _, link in matches]
             return [[name, urljoin(self.url, link), BLANK_IMG, "ARCHIVED"]

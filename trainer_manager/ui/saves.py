@@ -76,7 +76,7 @@ class SavingWidget(QFrame):
     class SaveDetailMessageBox(MessageBoxBase):
         def __init__(self, file_row, parent=None):
             super().__init__(parent)
-            self.data = utils.Data.json_read("data/data.json")
+            self.data = utils.Data.load_config("data/data.json")
             self.file_row = file_row
             self.edited = False
             self.saves = []
@@ -320,7 +320,7 @@ class SavingWidget(QFrame):
                 if n.exec():
                     shutil.rmtree(self.dst)
             utils.Data.json_write("data/data.json", self.data)
-            self.data = utils.Data.json_read("data/data.json")
+            self.data = utils.Data.load_config("data/data.json")
             self.name = self.data["files"]["save_file"][self.file_row][0]
             self.src = self.data["files"]["save_file"][self.file_row][1]
             self.dst = self.data["files"]["save_file"][self.file_row][2]
@@ -329,7 +329,7 @@ class SavingWidget(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         self.setObjectName("Saving")
         self.vBoxLayoutMain = QVBoxLayout(self)
         self.hBoxLayoutTop = QHBoxLayout(self)
@@ -386,7 +386,7 @@ class SavingWidget(QFrame):
         self.backupAllButton.clicked.connect(self.backup_all)
 
     def refresh(self):
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         self.save_table_default()
 
     def save_table_default(self):

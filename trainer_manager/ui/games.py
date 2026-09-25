@@ -33,7 +33,7 @@ class GameWidget(QFrame):
             self.coverLocationButton = PushButton(self)
             self.coverLocationButton.setText("Select")
             self.categoryCombo = ComboBox(self)
-            cats = utils.Data.json_read("data/data.json")["files"]["game_cats"]
+            cats = utils.Data.load_config("data/data.json")["files"]["game_cats"]
             self.categoryCombo.addItems(cats)
             self.categoryCombo.removeItem(cats.index("ALL"))
             self.infoLineEdit = LineEdit(self)
@@ -111,7 +111,7 @@ class GameWidget(QFrame):
         def __init__(self, parent=None):
             super().__init__(parent)
             self.cats = []
-            self.data = utils.Data.json_read("data/data.json")
+            self.data = utils.Data.load_config("data/data.json")
             self.titleLabel = SubtitleLabel('Manage Your Categories', self)
             self.categoryTable = TableWidget(self)
             self.categoryTable.horizontalHeader().setVisible(False)
@@ -137,7 +137,7 @@ class GameWidget(QFrame):
             self.category_default()
 
         def category_default(self):
-            self.cats = utils.Data.json_read("data/data.json")["files"]["game_cats"]
+            self.cats = utils.Data.load_config("data/data.json")["files"]["game_cats"]
             self.cats.remove("ALL")
             self.cats.remove("UNCATEGORIZED")
             count = len(self.cats)
@@ -182,7 +182,7 @@ class GameWidget(QFrame):
     class EditGameMessageBox(MessageBoxBase):
         def __init__(self, row, parent=None):
             super().__init__(parent)
-            self.data = utils.Data.json_read("data/data.json")
+            self.data = utils.Data.load_config("data/data.json")
             self.titleLabel = SubtitleLabel('Edit Game Configuration', self)
             self.nameLineEdit = LineEdit(self)
             self.nameLineEdit.setText(self.data["files"]["games"][row][0])
@@ -200,7 +200,7 @@ class GameWidget(QFrame):
             self.coverClearButton = PushButton(self)
             self.coverClearButton.setText("Clear")
             self.categoryCombo = ComboBox(self)
-            cats = utils.Data.json_read("data/data.json")["files"]["game_cats"]
+            cats = utils.Data.load_config("data/data.json")["files"]["game_cats"]
             self.categoryCombo.addItems(cats)
             self.categoryCombo.removeItem(cats.index("ALL"))
             self.categoryCombo.setCurrentText(self.data["files"]["games"][row][-1])
@@ -273,7 +273,7 @@ class GameWidget(QFrame):
         self.game_list = []
         self.row = None
         self.current_exe = None
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         self.setObjectName("Game")
         self.vBoxLayoutMain = QVBoxLayout(self)
         self.vBoxLayoutMiddle = QVBoxLayout(self)
@@ -427,7 +427,7 @@ class GameWidget(QFrame):
             self.refresh()
 
     def refresh(self):
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         self.detail_widget_visibility(False)
         self.table_default()
         self.combobox_default()

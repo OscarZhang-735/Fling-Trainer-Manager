@@ -20,8 +20,8 @@ class SearchWidget(QFrame):
         # self.resize(400, 400)
         self.name = None
         self.row = None
-        self.config = utils.Data.json_read("data/data.json")["config"]
-        self.data = utils.Data.json_read("data/data.json")
+        self.config = utils.Data.load_config("data/data.json")["config"]
+        self.data = utils.Data.load_config("data/data.json")
         self.setObjectName("Search")
         self.vBoxLayoutMain = QVBoxLayout(self)
         self.vBoxLayoutMiddle = QVBoxLayout(self)
@@ -37,7 +37,7 @@ class SearchWidget(QFrame):
         self.searchLine = LineEdit(self)
         self.searchLine.setAlignment(Qt.AlignCenter)
         self.searchLine.setFixedWidth(300)
-        self.searchLine.setPlaceholderText("Search on FLiNG Website")
+        self.searchLine.setPlaceholderText("Search FLiNG and Archive")
         self.searchLine.setClearButtonEnabled(True)
         self.searchButton = PrimaryPushButton(self)
         self.searchButton.setIcon(FIF.SEARCH)
@@ -125,7 +125,7 @@ class SearchWidget(QFrame):
         self.searchLine.textChanged.connect(self.check_input)
 
     def check_input(self):
-        if self.searchLine.text() == "" or type(self.searchLine.text()) is None:
+        if not self.searchLine.text().strip():
             self.searchButton.setDisabled(True)
             print("Invalid input")
             return
@@ -201,7 +201,7 @@ class SearchWidget(QFrame):
         self.register_download()
 
     def search(self):
-        if not self.searchLine.text():
+        if not self.searchLine.text().strip():
             return None
         if not NET:
             utils.Help.info("Info", "You have disabled connection for the program.")
@@ -214,20 +214,24 @@ class SearchWidget(QFrame):
         self.downloadButton.setVisible(False)
         self.visitPageButton.setVisible(False)
         self.separator_vertical_middle.setVisible(False)
-        self.status("Establishing connection.")
-        queryObj = crawler.Spider.Search(self.searchLine.text())
-        archivedQueryObj = crawler.Spider.ArchivedDownload(self.searchLine.text())
+        self.detail_result = None
+        self.row = None
+        self.status("Searching All Trainers and Archive.")
+        queryObj = crawler.Spider.SearchAll(self.searchLine.text())
         search_result = queryObj.run()
-        archived_search_result = archivedQueryObj.run()
         self.status("Data received.")
         self.query_result = search_result
-        for sub_archived_result in archived_search_result:
-            self.query_result.append(sub_archived_result)
         count = len(search_result)
         self.resultTable.setRowCount(count)
         self.resultTable.clear()
         self.status("Loading Data.")
+        result_status = f"{count} result(s) found."
+        if queryObj.failed_sources:
+            result_status += " Unavailable: " + ", ".join(queryObj.failed_sources) + ". Please retry."
+        self.status(result_status)
         if count == 0:
+            self.noResultWidget.setText("Search incomplete. Please retry." if queryObj.failed_sources
+                                        else "Oops! No results found.")
             self.noResultWidget.setVisible(True)
             return None
         for row in range(count):
@@ -237,7 +241,6 @@ class SearchWidget(QFrame):
             if search_result[row][-1] == "ARCHIVED":
                 item.setForeground(QBrush(Qt.gray))
             self.resultTable.setItem(row, 0, item)
-        self.status(f"{count} result(s) found.")
         self.resultTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
     def status(self, text):
@@ -307,7 +310,7 @@ class SearchWidget(QFrame):
         self.downloadButton.setDisabled(False)
 
     def check_download(self, name):
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         for downloaded in self.data["files"]["trainers"]:
             if name == downloaded[0]:
                 self.downloadButton.setIcon(FIF.COMPLETED)

@@ -11,7 +11,7 @@ class SettingWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         # self.resize(400, 400)
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         # self.data = utils.Data.json_read("./data/data.json")
         self.setObjectName("Setting")
         self.vBoxLayoutMain = QVBoxLayout(self)
@@ -111,7 +111,7 @@ class SettingWidget(QFrame):
         self.data_init()
 
     def data_init(self):
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         trainer_path = self.data["config"]["download"]["trainer"]
         game_path = self.data["config"]["download"]["games"]
         patch_path = self.data["config"]["download"]["patches"]

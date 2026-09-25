@@ -4,6 +4,7 @@ import json
 import os
 import re
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlretrieve
 
@@ -18,6 +19,9 @@ class Data:
             "config": {
                 "download": {
                     "path": ".\\trainers\\",
+                    "trainer": "./trainers/",
+                    "games": "./games/",
+                    "patches": "./patches/",
                     "extract": True
                 },
                 "cache": {
@@ -25,9 +29,10 @@ class Data:
                 },
                 "resources": {
                     "detail_img": ".\\resource\\img_cache\\image.jpg",
-                    "blank_img": ".\\resource\\original\\blank.png",
-                    "avatar_img": ".\\resource\\icons\\avatar.png",
-                    "cover_folder": ".\\resource\\game_covers"
+                    "blank_img": "resource/anon.jpg",
+                    "avatar_img": "resource/shoko.png",
+                    "cover_folder": "resource/game_covers",
+                    "trainer_cover_folder": "resource/trainer_covers"
                 },
                 "library": {
                     "filter": "REGISTERED_ONLY"
@@ -38,8 +43,8 @@ class Data:
                 },
                 "program": {
                     "username": "Rinne",
-                    "user_avatar": "resource/icons/avatar.png",
-                    "icon": "resource/icons/icon3.png",
+                    "user_avatar": "resource/shoko.png",
+                    "icon": "resource/logo.png",
                     "title": "TrainerManager",
                     "connection_allow": True
                 }
@@ -47,6 +52,7 @@ class Data:
             "files": {
                 "save_file": [],
                 "downloaded": [],
+                "trainers": [],
                 "game_cats": [
                     "ALL",
                     "UNCATEGORIZED",
@@ -54,6 +60,59 @@ class Data:
                 "games": []
             }
         }
+
+    @staticmethod
+    def normalize_config(data):
+        """Fill missing settings without changing the input or losing legacy data."""
+        result = deepcopy(data)
+        config = result.setdefault("config", {})
+        download = config.setdefault("download", {})
+        if "trainer" not in download and "path" in download:
+            download["trainer"] = download["path"]
+        resources = config.setdefault("resources", {})
+        for key, value in config.get("runtime", {}).items():
+            resources.setdefault(key, value)
+        files = result.setdefault("files", {})
+        if "trainers" not in files and "downloaded" in files:
+            files["trainers"] = []
+            for row in files["downloaded"]:
+                if len(row) == 6:
+                    # Legacy records have a source URL but no source type column.
+                    source = "COMMON" if str(row[4]).startswith(("http://", "https://")) else "UNKNOWN"
+                    status = "REGISTERED" if row[5] == "VERIFIED" else row[5]
+                    files["trainers"].append(row[:4] + [source, row[4], status])
+                else:
+                    files["trainers"].append(deepcopy(row))
+        if config.get("library", {}).get("filter") == "VERIFIED_ONLY":
+            config["library"]["filter"] = "REGISTERED_ONLY"
+
+        def fill_missing(target, defaults):
+            for key, value in defaults.items():
+                if key not in target:
+                    target[key] = deepcopy(value)
+                elif isinstance(value, dict) and isinstance(target[key], dict):
+                    fill_missing(target[key], value)
+
+        fill_missing(result, Data().init_json)
+        return result
+
+    @staticmethod
+    def load_config(path=CONFIG_PATH):
+        try:
+            data = Data.json_read(path)
+        except FileNotFoundError:
+            data = {}
+        return Data.normalize_config(data)
+
+    @staticmethod
+    def prepare_directories(data):
+        config = data["config"]
+        directories = [Path(CONFIG_PATH).parent]
+        directories.extend(Path(config["download"][key]) for key in ("trainer", "games", "patches"))
+        directories.extend(Path(config["resources"][key]) for key in ("cover_folder", "trainer_cover_folder"))
+        directories.append(Path(config["resources"]["detail_img"]).parent)
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def json_read(path):
@@ -102,7 +161,7 @@ class Download:
         suffix = Path(file_name).suffix.lower()
         if suffix not in {".zip", ".rar"}:
             return None
-        destination = Data.json_read(CONFIG_PATH)["config"]["download"]["trainer"]
+        destination = Data.load_config(CONFIG_PATH)["config"]["download"]["trainer"]
         if suffix == ".zip":
             with zipfile.ZipFile(file_name, "r") as archive:
                 for member in archive.namelist():

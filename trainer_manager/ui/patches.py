@@ -9,8 +9,11 @@ from trainer_manager.runtime import Font
 class PatchWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.data = utils.Data.json_read("data/data.json")
-        self.patches = utils.Data.json_read("data/patch.json")
+        self.data = utils.Data.load_config("data/data.json")
+        try:
+            self.patches = utils.Data.json_read("data/patch.json")
+        except FileNotFoundError:
+            self.patches = {"patches": {"neko_nyan_steam": [], "neko_nyan_non_steam": []}}
         self.setObjectName("Patch")
         self.vBoxLayoutMain = QVBoxLayout(self)
         self.hBoxLayoutTop = QHBoxLayout(self)

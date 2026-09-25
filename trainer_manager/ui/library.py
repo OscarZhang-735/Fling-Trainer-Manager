@@ -23,7 +23,7 @@ class LibraryWidget(QFrame):
         self.file_name_list = None
         self.row = None
         self.current_exe = None
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         self.setObjectName("Library")
         self.vBoxLayoutMain = QVBoxLayout(self)
         self.vBoxLayoutMiddle = QVBoxLayout(self)
@@ -197,7 +197,7 @@ class LibraryWidget(QFrame):
                                   time.asctime())
 
     def table_default(self):
-        self.data = utils.Data.json_read("data/data.json")
+        self.data = utils.Data.load_config("data/data.json")
         self.separator_vertical_middle.setVisible(False)
         self.detailImage.setVisible(False)
         self.detailLabel.setVisible(False)

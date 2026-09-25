@@ -12,7 +12,7 @@ class HelpingWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         # self.resize(400, 400)
-        self.config = utils.Data.json_read("data/data.json")["config"]
+        self.config = utils.Data.load_config("data/data.json")["config"]
         # self.data = utils.Data.json_read("./data/data.json")
         self.setObjectName("Help")
         self.vBoxLayoutMain = QVBoxLayout(self)

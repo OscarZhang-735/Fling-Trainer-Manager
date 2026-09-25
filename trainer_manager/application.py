@@ -21,14 +21,7 @@ def exit_handler():
 
 
 def setup_check():
-    requirements = ["./data", "./resources/game_covers", "./resources/img_cache"]
-    missing = []
-    for r in requirements:
-        if not os.path.exists(r):
-            missing.append(r)
-    if len(missing) > 0:
-        utils.Help.warning("Warning", f"Key files/directories are missing: {missing}.")
-        exit()
+    utils.Data.prepare_directories(utils.Data.load_config())
 
 
 def main():
@@ -39,7 +32,7 @@ def main():
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
+    setup_check()
     w = Window()
     w.show()
-    setup_check()
     app.exec_()
