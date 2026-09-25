@@ -1,21 +1,5 @@
-"""File helpers, extracted without changing behavior."""
+"""Compatibility exports; implementation lives in storage."""
 
-import os
-from trainer_manager.services.data import Data
+from .storage import File
 
-
-class File:
-    @staticmethod
-    def list_files(path):
-        files = os.listdir(path)
-        downloaded = Data.json_read("data/data.json")["files"]["trainers"]
-        print(files)
-        print(downloaded)
-
-    @staticmethod
-    def string_valid(string):
-        invalid = ["\\", "/", ":", "*", "?", '"', "<", ">", "|"]
-        for char in string:
-            if char in invalid:
-                string = string.replace(char, " ")
-        return string
+__all__ = ['File']

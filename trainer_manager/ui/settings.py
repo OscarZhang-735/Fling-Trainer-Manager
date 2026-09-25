@@ -3,7 +3,7 @@
 import os
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QFileDialog, QGridLayout
 from qfluentwidgets import MessageBox, BodyLabel, PushButton, LineEdit, PrimaryPushButton, HorizontalSeparator, SubtitleLabel, SwitchButton
-import utils
+from trainer_manager import services as utils
 from trainer_manager.runtime import Font
 
 

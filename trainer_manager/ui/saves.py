@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem, QFileDialog, QGridLayout
 from qfluentwidgets import MessageBox, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, MessageBoxBase, SubtitleLabel, TitleLabel
 from qfluentwidgets import FluentIcon as FIF
-import utils
+from trainer_manager import services as utils
 from trainer_manager.runtime import Font
 
 

@@ -5,7 +5,7 @@ import os
 import atexit
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
-import utils
+from trainer_manager import services as utils
 from trainer_manager.ui.window import Window
 
 

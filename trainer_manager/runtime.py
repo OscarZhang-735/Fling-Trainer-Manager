@@ -1,6 +1,6 @@
 """Shared startup configuration snapshot and fonts (legacy semantics)."""
 
-import utils
+from trainer_manager import services as utils
 
 Font = utils.Font()
 PREP = utils.Data.json_read("data/data.json")

@@ -9,8 +9,8 @@ from PyQt5.QtGui import QBrush, QStandardItemModel, QPixmap
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem
 from qfluentwidgets import MessageBox, ImageLabel, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, TitleLabel
 from qfluentwidgets import FluentIcon as FIF
-import crawler
-import utils
+from trainer_manager.services import crawler
+from trainer_manager import services as utils
 from trainer_manager.runtime import Font, NET
 
 
@@ -145,10 +145,20 @@ class SearchWidget(QFrame):
         if self.query_result[row][-1] == "COMMON":
             detailObj = crawler.Spider.Download(self.query_result[row][1])
             download_result = detailObj.run()
+            if not download_result:
+                self.detail_result = None
+                self.downloadButton.setDisabled(True)
+                self.detailLabel.setText("No download links available. Please retry or visit the website.")
+                self.detailImage.setVisible(False)
+                return
             self.detail_result = download_result[0]
-            filename = self.config["resources"]["detail_img"]
-            utils.Download.download_file(self.query_result[row][2], filename)
-            pic.load(filename)
+            image_url = self.query_result[row][2]
+            if image_url == crawler.BLANK_IMG:
+                pic.load(self.config["resources"]["blank_img"])
+            else:
+                filename = self.config["resources"]["detail_img"]
+                utils.Download.download_file(image_url, filename)
+                pic.load(filename)
         else:
             self.detail_result = [name, self.query_result[row][1], "No Info",
                                   "No Info\n**This is an archived Trainer**", "Before 2019-05"]
@@ -277,7 +287,9 @@ class SearchWidget(QFrame):
                                     self.query_result[self.row][1],
                                     "REGISTERED"]
                         try:
-                            shutil.copyfile(self.data["config"]["resources"]["detail_img"], pic_name)
+                            image_key = ("blank_img" if self.query_result[self.row][2] == crawler.BLANK_IMG
+                                         else "detail_img")
+                            shutil.copyfile(self.data["config"]["resources"][image_key], pic_name)
                         except FileExistsError:
                             pass
                     else:

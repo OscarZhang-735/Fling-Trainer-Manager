@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QTableWidgetItem
 from qfluentwidgets import TableWidget, HorizontalSeparator, TitleLabel
-import utils
+from trainer_manager import services as utils
 from trainer_manager.runtime import Font
 
 

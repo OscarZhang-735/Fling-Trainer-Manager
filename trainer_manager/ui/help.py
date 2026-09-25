@@ -4,7 +4,7 @@ import webbrowser
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout
 from qfluentwidgets import PushButton, PrimaryPushButton, HorizontalSeparator, SubtitleLabel, TitleLabel
 from qfluentwidgets import FluentIcon as FIF
-import utils
+from trainer_manager import services as utils
 from trainer_manager.runtime import Font
 
 

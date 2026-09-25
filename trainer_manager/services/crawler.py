@@ -3,9 +3,16 @@ import requests
 from lxml import etree
 from bs4 import BeautifulSoup as bs
 
-import utils
+from urllib.parse import urlencode, urljoin
 
 BLANK_IMG = "BLANK_IMG"
+
+
+def _html(text):
+    """Do not parse failed or empty responses."""
+    if not text or text == "error":
+        return None
+    return etree.HTML(text)
 
 
 class Spider:
@@ -19,10 +26,8 @@ class Spider:
 
         try:
             r = requests.get(url, headers=headers, timeout=5)
-        except requests.exceptions.ProxyError:
-            utils.Help.warning("Connection failed",
-                               "Cannot establish connection with the server due to your proxy. \nTry turning it off.",
-                               True)
+        except requests.exceptions.RequestException as error:
+            print(f"Connection failed: {error}")
             return "error"
         print(f"Request Generated! (GET: {url})")
 
@@ -64,14 +69,10 @@ class Spider:
     class Search:
         def __init__(self, keyword):
             self.keyword = keyword.split(" ")
-            self.search_url = "https://flingtrainer.com/?s="
-            for kw in self.keyword:
-                self.search_url += kw + "+"
-            self.search_url = self.search_url[:-1]
-
-            self.sub_names = None
-            self.sub_links = None
-            self.sub_images = None
+            self.search_url = "https://flingtrainer.com/?" + urlencode({"s": keyword})
+            self.sub_names = []
+            self.sub_links = []
+            self.sub_images = []
             self.text = Spider.crawler(self.search_url)
             if self.text != "error":
                 self.parser()
@@ -88,28 +89,32 @@ class Spider:
             return re_list
 
         def parser(self):
-            html = etree.HTML(self.text)
-            # self.sub_names = html.xpath()
-            self.sub_names = html.xpath("//div[@class='content']/article/div[2]/h2/a/text()")
-            self.sub_links = html.xpath("//div[@class='content']/article/div[2]/h2/a/@href")
-            self.sub_images = html.xpath("//div[@class='content']/article/div[1]/div/a/img/@src")
-            if self.sub_names and self.sub_names[-1] == "My Trainers Archive (From 2012-2019.05)":
-                self.sub_images.append(BLANK_IMG)
+            self.sub_names, self.sub_links, self.sub_images = [], [], []
+            html = _html(self.text)
+            if html is None:
+                return
+            for article in html.xpath("//div[@class='content']/article"):
+                names = article.xpath("./div[2]/h2/a/text()")
+                links = article.xpath("./div[2]/h2/a/@href")
+                images = article.xpath("./div[1]/div/a/img/@src")
+                if names and links:
+                    self.sub_names.append(names[0])
+                    self.sub_links.append(links[0])
+                    self.sub_images.append(images[0] if images else BLANK_IMG)
 
     class Download:
         def __init__(self, detail_url):
             self.detail_url = detail_url
-            self.download_name = None
-            self.download_link = None
-            self.download_size = None
-            self.download_count = None
-            self.download_date = None
+            self.download_name = []
+            self.download_link = []
+            self.download_size = []
+            self.download_count = []
+            self.download_date = []
             self.text = Spider.crawler(self.detail_url)
             if self.text != "error":
                 self.parser()
             else:
                 Spider.error()
-            self.parser()
 
         def run(self):
             re_list = []
@@ -123,12 +128,21 @@ class Spider:
             return re_list
 
         def parser(self):
-            html = etree.HTML(self.text)
-            self.download_name = html.xpath("//table[@class='da-attachments-table']/tbody/tr/td[1]/a/text()")
-            self.download_link = html.xpath("//table[@class='da-attachments-table']/tbody/tr/td[1]/a/@href")
-            self.download_date = html.xpath("//table[@class='da-attachments-table']/tbody/tr/td[2]/text()")
-            self.download_size = html.xpath("//table[@class='da-attachments-table']/tbody/tr/td[3]/text()")
-            self.download_count = html.xpath("//table[@class='da-attachments-table']/tbody/tr/td[4]/text()")
+            self.download_name, self.download_link = [], []
+            self.download_date, self.download_size, self.download_count = [], [], []
+            html = _html(self.text)
+            if html is None:
+                return
+            for row in html.xpath("//table[@class='da-attachments-table']/tbody/tr"):
+                names = row.xpath("./td[1]/a/text()")
+                links = row.xpath("./td[1]/a/@href")
+                if not names or not links:
+                    continue
+                self.download_name.append(names[0])
+                self.download_link.append(links[0])
+                for column, values in [(2, self.download_date), (3, self.download_size),
+                                       (4, self.download_count)]:
+                    values.append(row.xpath(f"string(./td[{column}])"))
 
     class ArchivedDownload:
         def __init__(self, keyword):
@@ -142,27 +156,19 @@ class Spider:
             self.parser()
 
         def parser(self):
-            html = etree.HTML(self.text)
-            print("html", html)
-            self.name_list = html.xpath("//table[@class='files']/tr/td/a/text()")
-            self.link_list = html.xpath("//table[@class='files']/tr/td/a/@href")
+            self.name_list, self.link_list = [], []
+            html = _html(self.text)
+            if html is None:
+                return
+            for link in html.xpath("//table[@class='files']//tr/td/a[@href]"):
+                self.name_list.append("".join(link.itertext()))
+                self.link_list.append(link.get("href"))
 
         def run(self):
-            print("Keywords: ", self.keyword)
-            match = False
-            for name in self.name_list:
-                for kw in self.keyword:
-                    if name.lower().find(kw.lower()) == -1:
-                        match = False
-                        break
-                    match = True
-                if match:
-                    index = self.name_list.index(name)
-                    self.result_name.append(self.name_list[index])
-                    self.result_link.append(self.link_list[index])
-            re_list = []
-            for i in range(len(self.result_name)):
-                print(f"Name: {self.name_list[i]} | Link: {self.link_list[i]}")
-                re_list.append(
-                    [self.name_list[i], "https://archive.flingtrainer.com/" + self.link_list[i], BLANK_IMG, "ARCHIVED"])
-            return re_list
+            keywords = [keyword.lower() for keyword in self.keyword]
+            matches = [(name, link) for name, link in zip(self.name_list, self.link_list)
+                       if all(keyword in name.lower() for keyword in keywords)]
+            self.result_name = [name for name, _ in matches]
+            self.result_link = [link for _, link in matches]
+            return [[name, urljoin(self.url, link), BLANK_IMG, "ARCHIVED"]
+                    for name, link in matches]

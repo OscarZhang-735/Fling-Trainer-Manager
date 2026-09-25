@@ -9,8 +9,8 @@ from PyQt5.QtGui import QBrush, QPixmap
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem
 from qfluentwidgets import MessageBox, ImageLabel, BodyLabel, PushButton, TableWidget, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, TitleLabel
 from qfluentwidgets import FluentIcon as FIF
-import crawler
-import utils
+from trainer_manager.services import crawler
+from trainer_manager import services as utils
 from trainer_manager.ui.common import Error
 from trainer_manager.ui.common import WorkerThread
 from trainer_manager.runtime import Font

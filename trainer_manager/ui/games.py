@@ -9,7 +9,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem, QTableWidget, QFileDialog
 from qfluentwidgets import MessageBox, ImageLabel, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, MessageBoxBase, SubtitleLabel, TitleLabel, ComboBox
 from qfluentwidgets import FluentIcon as FIF
-import utils
+from trainer_manager import services as utils
 from trainer_manager.ui.common import WorkerThread
 from trainer_manager.runtime import Font
 
