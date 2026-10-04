@@ -54,6 +54,7 @@ class Data:
                 "save_file": [],
                 "downloaded": [],
                 "trainers": [],
+                "trainer_versions": {},
                 "game_cats": [
                     "ALL",
                     "UNCATEGORIZED",

@@ -1,17 +1,20 @@
-"""Stream and install trainers into separate attempts, preserving existing versions."""
+"""Select releases and atomically replace a trainer in its stable, flat directory."""
 
 import re
 import stat
+import shutil
 import time
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from email.message import Message
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 import requests
 
 from .storage import Data, File, CONFIG_PATH
+from .releases import release_info, source_key, installed_release, same_release
 
 _RESERVED_NAME = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", re.I)
 
@@ -21,6 +24,8 @@ class TransferResult:
     # The saved download may be an archive or a directly served executable.
     archive: str
     executable: str = ""
+    release: dict = field(default_factory=dict)
+    up_to_date: bool = False
 
 
 def _safe_name(name):
@@ -84,15 +89,63 @@ def _extract(archive_path, destination):
                 executable = archive.extract(member, destination)
             return str(Path(executable).resolve())
     except rarfile.RarCannotExec as error:
-        raise RuntimeError("RAR extraction requires WinRAR/UnRAR on PATH. The archive has been kept.") from error
+        raise RuntimeError("RAR extraction requires WinRAR/UnRAR on PATH.") from error
+
+
+def _response_filename(response, suffix, fallback):
+    header = Message()
+    header["Content-Disposition"] = response.headers.get("Content-Disposition", "")
+    remote_url = response.url if isinstance(response.url, str) else ""
+    names = [header.get_filename(), unquote(urlsplit(remote_url).path.rsplit("/", 1)[-1])]
+    for name in names:
+        if not name:
+            continue
+        name = PureWindowsPath(name).name
+        if Path(name).suffix.lower() != suffix:
+            continue
+        try:
+            _validate_member(name)
+        except ValueError:
+            continue
+        return name
+    fallback = re.sub(r"\.(exe|zip|rar)$", "", fallback, flags=re.I)
+    return _safe_name(fallback) + suffix
+
+
+def _publish(candidate, folder, filename=None, previous_executable=None):
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / (filename or candidate.name)
+    previous = Path(previous_executable).resolve() if previous_executable else None
+    # Only retire the registered executable in this game's flat directory.
+    retire = (previous is not None and previous.parent == folder.resolve()
+              and previous != target.resolve() and previous.is_file())
+    if retire and target.exists():
+        raise FileExistsError("A different file already exists with the new trainer's name.")
+    saved = candidate.replace(target)
+    if retire:
+        try:
+            previous.unlink()
+        except OSError:
+            target.unlink()  # Keep the registered old version when it is locked/in use.
+            raise
+    return str(saved)
+
+
+def _cleanup_attempt(attempt, cache):
+    if attempt.parent != cache or not re.fullmatch(r"[a-f0-9]{12}", attempt.name):
+        raise ValueError("Invalid temporary download directory.")
+    shutil.rmtree(attempt, ignore_errors=True)
 
 
 def download_trainer(url, name, destination, extract=True, progress=lambda done, total: None,
-                     stage=lambda text: None, referrer=None):
+                     stage=lambda text: None, referrer=None, release_name=None,
+                     previous_executable=None):
     if urlsplit(url).scheme not in ("http", "https"):
         raise ValueError("Invalid download URL.")
-    # A new directory per attempt avoids overwriting a working trainer or a partial download.
-    attempt = Path(destination).resolve() / _safe_name(name) / uuid4().hex[:12]
+    folder = Path(destination).resolve() / _safe_name(name)
+    cache = Path(destination).resolve() / ".download-cache"
+    # Staging is outside the trainer folder; only the validated current EXE is published.
+    attempt = cache / uuid4().hex[:12]
     attempt.mkdir(parents=True, exist_ok=False)
     partial = attempt / "download.part"
     stage("Connecting…")
@@ -126,23 +179,64 @@ def download_trainer(url, name, destination, extract=True, progress=lambda done,
             progress(done, total)
         stage("Checking file…")
         suffix = _download_format(partial)
+        filename = _response_filename(response, suffix, release_name or name)
         archive = partial.rename(attempt / ("trainer" + suffix))
         if suffix == ".exe":
             # New main-site links can redirect straight to an EXE inside a former ZIP URL.
             # It is already runnable, so the archive extraction setting does not apply.
-            return TransferResult(str(archive), str(archive))
+            executable = _publish(archive, folder, filename, previous_executable)
+            return TransferResult(executable, executable)
         if not extract:
-            return TransferResult(str(archive))
+            return TransferResult(_publish(archive, folder, filename))
         stage("Extracting…")
         executable = _extract(archive, attempt / "files")
         if not Path(executable).is_file():
             raise ValueError("Extraction did not produce a trainer executable.")
-        return TransferResult(str(archive), executable)
+        executable = _publish(Path(executable), folder, previous_executable=previous_executable)
+        return TransferResult(executable, executable)
     except Exception as error:
-        raise RuntimeError(f"{error}\nDownload files kept in: {attempt}") from error
+        raise RuntimeError(str(error)) from error
+    finally:
+        _cleanup_attempt(attempt, cache)
 
 
-def register_trainer(source, executable, cover="NONE"):
+def install_latest(source, destination, extract=True, progress=lambda done, total: None,
+                   stage=lambda text: None):
+    from .crawler import Spider
+    if source[-1] == "COMMON":
+        stage("Checking standalone version…")
+        selected = Spider.Download(source[1]).latest_standalone()
+        if selected is None:
+            raise ValueError("No standalone trainer is available. No file was downloaded.")
+        referrer = source[1]
+    else:
+        selected = [source[0], source[1], "", "", ""]
+        referrer = None
+    result = download_trainer(selected[1], source[0], destination, extract, progress, stage, referrer,
+                              release_name=selected[0])
+    result.release = release_info(selected)
+    return result
+
+
+def update_trainer(record, destination, progress=lambda done, total: None, stage=lambda text: None):
+    from .crawler import Spider
+    stage("Checking standalone version…")
+    detail = Spider.Download(record[5])
+    selected = detail.latest_standalone()
+    if selected is None:
+        raise ValueError("No standalone trainer is available. No file was downloaded.")
+    available = release_info(selected)
+    installed = installed_release(Data.load_config(), record, detail.standalone_rows)
+    if Path(record[1]).is_file() and same_release(installed, available):
+        return TransferResult("", record[1], available, True)
+    result = download_trainer(selected[1], record[0], destination, progress=progress,
+                              stage=stage, referrer=record[5], release_name=selected[0],
+                              previous_executable=record[1])
+    result.release = available
+    return result
+
+
+def register_trainer(source, executable, cover="NONE", release=None):
     """Read the latest data and use the exact extracted path, independently of cover caching."""
     if not Path(executable).is_file():
         raise ValueError("The extracted trainer file is missing.")
@@ -156,5 +250,16 @@ def register_trainer(source, executable, cover="NONE"):
             break
     else:
         rows.append(record)
+    if release:
+        data["files"].setdefault("trainer_versions", {})[source_key(source)] = dict(release)
     Data.json_write_atomic(CONFIG_PATH, data)
     return record
+
+
+def remember_release(source, release):
+    """Backfill a recognized legacy version without changing the installation record/date."""
+    data = Data.load_config()
+    versions = data["files"].setdefault("trainer_versions", {})
+    if versions.get(source_key(source)) != release:
+        versions[source_key(source)] = dict(release)
+        Data.json_write_atomic(CONFIG_PATH, data)

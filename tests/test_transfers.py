@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import requests
 
-from trainer_manager.services.transfers import download_trainer, register_trainer, _extract, _download_format
+from trainer_manager.services.transfers import download_trainer, register_trainer, _extract, _download_format, _publish
 from trainer_manager.services.storage import Data
 
 
@@ -28,6 +28,9 @@ class TransferTests(unittest.TestCase):
         self.mkdir = self.stack.enter_context(patch.object(Path, "mkdir"))
         self.open = self.stack.enter_context(patch.object(Path, "open"))
         self.rename = self.stack.enter_context(patch.object(Path, "rename", return_value=Path("trainer.zip")))
+        self.replace = self.stack.enter_context(patch.object(Path, "replace", autospec=True,
+            side_effect=lambda candidate, target: Path(target)))
+        self.cleanup = self.stack.enter_context(patch("trainer_manager.services.transfers.shutil.rmtree"))
         self.is_zip = self.stack.enter_context(patch("trainer_manager.services.transfers.zipfile.is_zipfile", return_value=True))
 
     def test_streams_progress_and_honors_archive_only_setting(self):
@@ -67,7 +70,7 @@ class TransferTests(unittest.TestCase):
             extract.assert_not_called()
         self.rename.assert_not_called()
 
-    def test_interrupted_download_keeps_partial_and_does_not_install(self):
+    def test_interrupted_download_cleans_staging_and_does_not_install(self):
         def broken():
             yield b"abc"
             raise requests.ConnectionError("interrupted")
@@ -75,6 +78,8 @@ class TransferTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "interrupted"):
             download_trainer("https://example.com/game", "Game", "trainers")
         self.rename.assert_not_called()
+        self.replace.assert_not_called()
+        self.cleanup.assert_called_once()
 
     def test_unsupported_content_is_rejected_even_with_archive_extension(self):
         self.is_zip.return_value = False
@@ -83,11 +88,12 @@ class TransferTests(unittest.TestCase):
             download_trainer("https://example.com/fake.zip", "Game", "trainers")
         self.rename.assert_not_called()
 
-    def test_returns_exact_executable_path_including_nested_folders(self):
+    def test_nested_archive_executable_is_published_directly_in_trainer_folder(self):
         with patch("trainer_manager.services.transfers._extract", return_value="trainers/Game/files/nested/Real.EXE"), \
                 patch.object(Path, "is_file", return_value=True):
             result = download_trainer("https://example.com/game", "Game", "trainers")
-        self.assertEqual(result.executable, "trainers/Game/files/nested/Real.EXE")
+        self.assertEqual(result.executable, str(Path("trainers/Game/Real.EXE").resolve()))
+        self.assertEqual(self.replace.call_args.args[0], Path("trainers/Game/files/nested/Real.EXE"))
 
     def test_zip_rejects_traversal_links_and_missing_executable(self):
         for name in ("../escape.exe", "C:/escape.exe", "readme.txt", "link.exe"):
@@ -120,13 +126,38 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(saved["files"]["trainers"][0][1], "actual/Trainer.exe")
         self.assertEqual(saved["files"]["trainers"][0][3], "NONE")
 
+    def test_registration_persists_release_without_changing_seven_column_row_shape(self):
+        data = Data.normalize_config({})
+        release = {"name": "Game.v1.Trainer", "download_url": "https://example.com/v1", "date": "2025-01-01", "version": "v1"}
+        with patch.object(Data, "load_config", return_value=data), \
+                patch.object(Data, "json_write_atomic"), patch.object(Path, "is_file", return_value=True):
+            record = register_trainer(["Game", "https://example.com/game", "", "COMMON"], "trainer.exe", release=release)
+        self.assertEqual(len(record), 7)
+        self.assertEqual(record[-3:], ["COMMON", "https://example.com/game", "REGISTERED"])
+        self.assertEqual(data["files"]["trainer_versions"]["COMMON:https://example.com/game"], release)
+
+    def test_repeated_downloads_publish_to_same_flat_path(self):
+        with patch("trainer_manager.services.transfers._download_format", return_value=".exe"):
+            first = download_trainer("https://example.com/v1", "Game Trainer", "trainers")
+            second = download_trainer("https://example.com/v2", "Game Trainer", "trainers")
+        self.assertEqual(first.executable, second.executable)
+        self.assertEqual(Path(first.executable).parent, Path("trainers/Game Trainer").resolve())
+        self.assertEqual(self.cleanup.call_count, 2)
+
+    def test_locked_current_file_reports_failure_without_removing_it(self):
+        self.replace.side_effect = PermissionError("trainer is running")
+        with patch("trainer_manager.services.transfers._download_format", return_value=".exe"):
+            with self.assertRaisesRegex(RuntimeError, "trainer is running"):
+                download_trainer("https://example.com/v2", "Game Trainer", "trainers")
+        self.cleanup.assert_called_once()
+
     def test_missing_executable_does_not_change_registration(self):
         with patch.object(Path, "is_file", return_value=False), patch.object(Data, "json_write_atomic") as write:
             with self.assertRaises(ValueError):
                 register_trainer(["Game", "url", "", "ARCHIVED"], "missing.exe")
         write.assert_not_called()
 
-    def test_rar_extraction_failure_keeps_archive_and_reports_missing_tool(self):
+    def test_rar_extraction_failure_closes_archive_and_reports_missing_tool(self):
         class RarCannotExec(Exception):
             pass
         member = Mock(filename="nested/Game.EXE", file_redir=None)
@@ -147,7 +178,7 @@ class TransferTests(unittest.TestCase):
         self.open.return_value.__enter__.return_value.read.return_value = b"Rar!\x1a\x07\x01\x00"
         self.rename.return_value = Path("trainer.rar")
         result = download_trainer("https://example.com/download?id=1", "Game", "trainers", False)
-        self.assertEqual(result.archive, "trainer.rar")
+        self.assertEqual(result.archive, str(Path("trainers/Game/Game.rar").resolve()))
         self.assertEqual(self.rename.call_args.args[0].suffix, ".rar")
 
     def test_atomic_registration_does_not_replace_original_if_serialization_fails(self):
@@ -170,10 +201,48 @@ class TransferTests(unittest.TestCase):
                     patch("trainer_manager.services.transfers._extract") as unpack:
                 self.rename.return_value = Path("saved/trainer.exe")
                 result = download_trainer("https://flingtrainer.com/downloads/token", "Game", "trainers", extract)
-            self.assertEqual(result.executable, str(Path("saved/trainer.exe")))
+            self.assertEqual(result.executable, str(Path("trainers/Game/Game.exe").resolve()))
             self.assertEqual(result.archive, result.executable)
             self.assertEqual(self.rename.call_args.args[0].suffix, ".exe")
             unpack.assert_not_called()
+
+    def test_direct_executable_preserves_header_or_final_url_filename(self):
+        self.response.url = "https://example.com/archive.zip/Game%20v2%20Trainer.exe"
+        cases = [("attachment; filename*=UTF-8''Game%20%E4%B8%AD%E6%96%87.exe", "Game 中文.exe"),
+                 ('attachment; filename="Game Original.EXE"', "Game Original.EXE"),
+                 ("", "Game v2 Trainer.exe")]
+        for header, expected in cases:
+            self.response.headers["Content-Disposition"] = header
+            with patch("trainer_manager.services.transfers._download_format", return_value=".exe"):
+                result = download_trainer("https://example.com/token", "Game", "trainers")
+            self.assertEqual(Path(result.executable).name, expected)
+
+    def test_opaque_download_uses_release_name_with_actual_extension(self):
+        self.response.url = "https://example.com/token"
+        with patch("trainer_manager.services.transfers._download_format", return_value=".exe"):
+            result = download_trainer("https://example.com/token", "Game", "trainers",
+                                      release_name="Game.v2.Trainer.zip")
+        self.assertEqual(Path(result.executable).name, "Game.v2.Trainer.exe")
+
+    def test_changed_filename_retires_only_registered_file_in_same_folder(self):
+        folder = Path("trainers/Game").resolve()
+        old = folder / "Game v1.exe"
+        with patch.object(Path, "is_file", return_value=True), \
+                patch.object(Path, "exists", return_value=False), \
+                patch.object(Path, "unlink", autospec=True) as unlink:
+            saved = _publish(Path("cache/Game v2.exe"), folder, previous_executable=old)
+        self.assertEqual(saved, str(folder / "Game v2.exe"))
+        unlink.assert_called_once_with(old)
+
+    def test_changed_filename_locked_old_file_rolls_back_new_file(self):
+        folder = Path("trainers/Game").resolve()
+        old = folder / "Game v1.exe"
+        with patch.object(Path, "is_file", return_value=True), \
+                patch.object(Path, "exists", return_value=False), \
+                patch.object(Path, "unlink", autospec=True, side_effect=[PermissionError("locked"), None]) as unlink:
+            with self.assertRaisesRegex(PermissionError, "locked"):
+                _publish(Path("cache/Game v2.exe"), folder, previous_executable=old)
+        self.assertEqual([call.args[0] for call in unlink.call_args_list], [old, folder / "Game v2.exe"])
 
     def test_exe_detection_checks_pe_signature_not_only_mz_prefix(self):
         self.is_zip.return_value = False

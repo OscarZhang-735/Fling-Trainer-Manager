@@ -14,7 +14,7 @@ from trainer_manager import services as utils
 from trainer_manager.runtime import Font, NET
 from trainer_manager.ui.preview import ImagePreview
 from trainer_manager.ui.transfers import DownloadSession
-from trainer_manager.services.transfers import download_trainer, register_trainer
+from trainer_manager.services.transfers import install_latest, register_trainer
 
 
 class SearchWidget(QFrame):
@@ -154,13 +154,13 @@ class SearchWidget(QFrame):
             self.query_result[row][2] = image_url
             if image_url != crawler.BLANK_IMG:
                 self.detailImage.loadUrl(image_url)
-            download_result = detailObj.run()
-            if not download_result:
+            latest = detailObj.latest_standalone()
+            if latest is None:
                 self.detail_result = None
                 self.downloadButton.setDisabled(True)
-                self.detailLabel.setText("No download links available. Please retry or visit the website.")
+                self.detailLabel.setText("No standalone download available. Please retry or visit the website.")
                 return
-            self.detail_result = download_result[0]
+            self.detail_result = latest
         else:
             self.detail_result = [name, self.query_result[row][1], "No Info",
                                   "No Info\n**This is an archived Trainer**", "Before 2019-05"]
@@ -178,9 +178,8 @@ class SearchWidget(QFrame):
         self.config = utils.Data.load_config()["config"]
         self._download_source = self.query_result[self.row][:]
         self._set_download_busy(True)
-        task = partial(download_trainer, self.detail_result[1], self.detail_result[0],
-                       self.config["download"]["trainer"], self.config["download"]["extract"],
-                       referrer=self._download_source[1] if self._download_source[-1] == "COMMON" else None)
+        task = partial(install_latest, self._download_source, self.config["download"]["trainer"],
+                       self.config["download"]["extract"])
         self._transfer.start(task, self._download_success, self._download_error, self._download_finished)
 
     def _set_download_busy(self, busy):
@@ -192,7 +191,7 @@ class SearchWidget(QFrame):
 
     def _download_success(self, result):
         if result.executable:
-            self.register_download(result.executable)
+            self.register_download(result.executable, result.release)
             self.downloadButton.setText("Downloaded")
             self.status("Download completed and added to library.")
         else:
@@ -284,14 +283,14 @@ class SearchWidget(QFrame):
         link = self.query_result[self.row][1]
         webbrowser.open(link)
 
-    def register_download(self, executable):
+    def register_download(self, executable, release):
         cover = "NONE"
         if (self._download_source[-1] == "COMMON" and self.config["cache"]["detail_image"]
                 and not self.detailImage.image.isNull()):
             cover_path = str(Path(executable).parent / "preview.jpg")
             if self.detailImage.image.save(cover_path, "JPG"):
                 cover = cover_path
-        register_trainer(self._download_source, executable, cover)
+        register_trainer(self._download_source, executable, cover, release)
         self.data = utils.Data.load_config()
 
     def check_download(self, name):

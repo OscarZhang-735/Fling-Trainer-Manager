@@ -8,6 +8,7 @@ from lxml import etree
 from bs4 import BeautifulSoup as bs
 
 from urllib.parse import urljoin, urlsplit, urldefrag
+from .releases import is_standalone, latest_release
 
 BLANK_IMG = "BLANK_IMG"
 
@@ -147,6 +148,7 @@ class Spider:
         def __init__(self, detail_url):
             self.detail_url = detail_url
             self.image_url = BLANK_IMG
+            self.standalone_rows = []
             self.download_name = []
             self.download_link = []
             self.download_size = []
@@ -173,6 +175,7 @@ class Spider:
             self.download_name, self.download_link = [], []
             self.download_date, self.download_size, self.download_count = [], [], []
             self.image_url = BLANK_IMG
+            self.standalone_rows = []
             html = _html(self.text)
             if html is None:
                 return
@@ -188,16 +191,26 @@ class Spider:
                 if image.strip() and urlsplit(image_url).scheme in ("http", "https"):
                     self.image_url = image_url
                     break
-            for row in html.xpath("//table[@class='da-attachments-table']/tbody/tr"):
-                names = row.xpath("./td[1]/a/text()")
+            for row in html.xpath("//table[contains(concat(' ', normalize-space(@class), ' '), ' da-attachments-table ')]//tr[td]"):
+                names = row.xpath("./td[1]/a//text()")
                 links = row.xpath("./td[1]/a/@href")
                 if not names or not links:
                     continue
-                self.download_name.append(names[0])
+                name = " ".join(" ".join(names).split())
+                self.download_name.append(name)
                 self.download_link.append(urljoin(self.detail_url, links[0]))
                 for column, values in [(2, self.download_date), (3, self.download_size),
                                        (4, self.download_count)]:
                     values.append(row.xpath(f"string(./td[{column}])"))
+
+                heading = row.xpath("ancestor::table[1]/preceding::*[self::h2 or self::h3 or self::h4][1]")
+                context = " ".join(heading[0].itertext()) if heading else ""
+                if is_standalone(name, self.download_link[-1], context):
+                    self.standalone_rows.append([name, self.download_link[-1], self.download_size[-1],
+                                                 self.download_count[-1], self.download_date[-1]])
+
+        def latest_standalone(self):
+            return latest_release(self.standalone_rows)
 
     class ArchivedDownload:
         def __init__(self, keyword):

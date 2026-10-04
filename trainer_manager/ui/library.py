@@ -1,6 +1,9 @@
 """ui.library: extracted application components."""
 
 import subprocess
+from functools import partial
+from pathlib import Path
+import shutil
 import os
 import webbrowser
 from PyQt5.QtCore import Qt
@@ -8,13 +11,13 @@ from PyQt5.QtGui import QBrush
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem
 from qfluentwidgets import isDarkTheme, MessageBox, BodyLabel, PushButton, TableWidget, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, TitleLabel
 from qfluentwidgets import FluentIcon as FIF
-from trainer_manager.services import crawler
 from trainer_manager import services as utils
 from trainer_manager.ui.common import WorkerThread
 from trainer_manager.runtime import Font
 from trainer_manager.ui.preview import ImagePreview
 from trainer_manager.ui.transfers import DownloadSession
-from trainer_manager.services.transfers import download_trainer, register_trainer
+from trainer_manager.services.transfers import update_trainer, register_trainer, remember_release
+from trainer_manager.services.releases import installed_release
 
 
 class LibraryWidget(QFrame):
@@ -175,26 +178,34 @@ class LibraryWidget(QFrame):
         for widget in (self.resultTable, self.clearButton, self.deleteButton, self.runButton, self.updateButton):
             widget.setEnabled(False)
 
-        def task(progress, stage):
-            stage("Checking update…")
-            results = crawler.Spider.Download(current[5]).run()
-            if not results:
-                raise ValueError("No download links available. Please retry or visit the website.")
-            return download_trainer(results[0][1], results[0][0], destination,
-                                    progress=progress, stage=stage, referrer=current[5])
+        task = partial(update_trainer, current, destination)
 
         self._transfer.start(task, self._update_success, self._update_error, self._update_finished)
 
     def _update_success(self, result):
-        register_trainer(self._update_source, result.executable, self._update_cover)
+        if result.up_to_date:
+            remember_release(self._update_source, result.release)
+        else:
+            cover = "NONE"
+            old_cover = Path(self._update_cover)
+            if old_cover.is_file():
+                target = Path(result.executable).parent / "preview.jpg"
+                try:
+                    if old_cover.resolve() != target.resolve():
+                        shutil.copyfile(old_cover, target)
+                    cover = str(target)
+                except OSError:
+                    pass  # A missing cover must not prevent registering the new trainer.
+            register_trainer(self._update_source, result.executable, cover, result.release)
+        self._was_up_to_date = result.up_to_date
         self.current_exe = result.executable
-        self.updateButton.setText("Updated")
+        self.updateButton.setText("Up to date" if self._was_up_to_date else "Updated")
         self.updateButton.setToolTip(result.executable)
-        self.detailLabel.setText("Update completed. The previous version has been kept.\n" + result.executable)
+        self.detailLabel.setText("Already up to date." if result.up_to_date else "Update completed.\n" + result.executable)
 
     def _update_error(self, error):
         self.updateButton.setText("Retry update")
-        self.detailLabel.setText("Update failed. The previous version has been kept.\n" + error)
+        self.detailLabel.setText("Update failed:\n" + error)
 
     def _update_finished(self, succeeded):
         for widget in (self.resultTable, self.clearButton, self.deleteButton, self.runButton, self.updateButton):
@@ -205,9 +216,10 @@ class LibraryWidget(QFrame):
                 if record[0] == self._update_source[0] and record[-3] == self._update_source[-1]:
                     self.resultTable.selectRow(row)
                     self.show_detail(row, 0)
-                    self.updateButton.setText("Updated")
+                    self.updateButton.setText("Up to date" if self._was_up_to_date else "Updated")
                     self.updateButton.setEnabled(False)
-                    self.resultLabel.setText("Update completed. Previous version kept.")
+                    self.resultLabel.setText("Already up to date. No download needed." if self._was_up_to_date
+                                             else "Update completed.")
                     break
 
     def table_default(self):
@@ -278,6 +290,10 @@ class LibraryWidget(QFrame):
             content = f"File: {self.file_name_list[row][0]} \n**This file is not registered**"
             self.visitPageButton.setDisabled(True)
             self.updateButton.setDisabled(True)
+        version = installed_release(self.data, self.file_name_list[row])
+        if version:
+            content += "\nVersion: " + version.get("version", version.get("name", "Unknown"))
+            content += "\nRelease date: " + version.get("date", "")
         self.detailLabel.setText(content)
         self.detailLabel.setFont(Font.STANDARD_FONT)
         self.current_exe = self.file_name_list[row][1]
