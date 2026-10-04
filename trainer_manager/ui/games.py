@@ -5,9 +5,9 @@ import subprocess
 import os
 import time
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem, QTableWidget, QFileDialog
-from qfluentwidgets import MessageBox, ImageLabel, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, MessageBoxBase, SubtitleLabel, TitleLabel, ComboBox
+from qfluentwidgets import isDarkTheme, MessageBox, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, MessageBoxBase, SubtitleLabel, TitleLabel, ComboBox
+from trainer_manager.ui.preview import ImagePreview
 from qfluentwidgets import FluentIcon as FIF
 from trainer_manager import services as utils
 from trainer_manager.ui.common import WorkerThread
@@ -313,7 +313,7 @@ class GameWidget(QFrame):
         self.noResultWidget.setFont(Font.STANDARD_HUGE_FONT)
         self.noResultWidget.setAlignment(Qt.AlignCenter)
 
-        self.detailImage = ImageLabel(self)
+        self.detailImage = ImagePreview(self, dark=isDarkTheme())
         self.detailLabel = BodyLabel(self)
         self.runButton = PrimaryPushButton("Launch", self)
         self.runButton.setIcon(FIF.PLAY)
@@ -497,16 +497,10 @@ class GameWidget(QFrame):
         self.editButton.setDisabled(False)
         pic_name = self.game_list[self.row][0] + ".jpg"
         pic_name = os.path.normpath(os.path.join(self.data["config"]["resources"]["cover_folder"], pic_name))
-        pic = QPixmap()
-        if os.path.exists(pic_name):
-            pic.load(pic_name)
-        else:
-            pic.load(self.data["config"]["resources"]["blank_img"])
+        self.detailImage.loadFile(pic_name)
         content = f"Name: {self.game_list[self.row][0]}\nCategory: {self.game_list[self.row][-1]}\nAdd/Edit Time: {self.game_list[self.row][2]}\nIntroduction: {self.game_list[self.row][3]}"
 
         self.detailLabel.setText(content)
         self.detailLabel.setFont(Font.STANDARD_FONT)
-        self.detailImage.setImage(pic)
-        self.detailImage.setFixedSize(250, 250)
         self.current_exe = self.game_list[row][1]
         self.resultTable.resizeColumnsToContents()

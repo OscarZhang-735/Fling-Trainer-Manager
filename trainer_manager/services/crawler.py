@@ -146,6 +146,7 @@ class Spider:
     class Download:
         def __init__(self, detail_url):
             self.detail_url = detail_url
+            self.image_url = BLANK_IMG
             self.download_name = []
             self.download_link = []
             self.download_size = []
@@ -171,16 +172,29 @@ class Spider:
         def parser(self):
             self.download_name, self.download_link = [], []
             self.download_date, self.download_size, self.download_count = [], [], []
+            self.image_url = BLANK_IMG
             html = _html(self.text)
             if html is None:
                 return
+            images = html.xpath("//meta[@property='og:image']/@content")
+            images += html.xpath("//meta[@name='twitter:image']/@content")
+            # Restrict fallback images to the article, excluding sidebar and comment avatars.
+            images += html.xpath(
+                "//div[contains(concat(' ', normalize-space(@class), ' '), ' entry-inner ')]"
+                "//img/@data-src | "
+                "//div[contains(concat(' ', normalize-space(@class), ' '), ' entry-inner ')]//img/@src")
+            for image in images:
+                image_url = urljoin(self.detail_url, image.strip())
+                if image.strip() and urlsplit(image_url).scheme in ("http", "https"):
+                    self.image_url = image_url
+                    break
             for row in html.xpath("//table[@class='da-attachments-table']/tbody/tr"):
                 names = row.xpath("./td[1]/a/text()")
                 links = row.xpath("./td[1]/a/@href")
                 if not names or not links:
                     continue
                 self.download_name.append(names[0])
-                self.download_link.append(links[0])
+                self.download_link.append(urljoin(self.detail_url, links[0]))
                 for column, values in [(2, self.download_date), (3, self.download_size),
                                        (4, self.download_count)]:
                     values.append(row.xpath(f"string(./td[{column}])"))

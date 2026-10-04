@@ -1,17 +1,20 @@
 """ui.search: extracted application components."""
 
-import shutil
 import os
-import time
+from functools import partial
+from pathlib import Path
 import webbrowser
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QBrush, QStandardItemModel, QPixmap
+from PyQt5.QtGui import QBrush, QStandardItemModel
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QHeaderView, QTableWidgetItem
-from qfluentwidgets import MessageBox, ImageLabel, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, TitleLabel
+from qfluentwidgets import isDarkTheme, BodyLabel, PushButton, TableWidget, LineEdit, PrimaryPushButton, HorizontalSeparator, VerticalSeparator, TitleLabel
 from qfluentwidgets import FluentIcon as FIF
 from trainer_manager.services import crawler
 from trainer_manager import services as utils
 from trainer_manager.runtime import Font, NET
+from trainer_manager.ui.preview import ImagePreview
+from trainer_manager.ui.transfers import DownloadSession
+from trainer_manager.services.transfers import download_trainer, register_trainer
 
 
 class SearchWidget(QFrame):
@@ -72,10 +75,11 @@ class SearchWidget(QFrame):
         self.noResultWidget.setText("Oops! No results found.")
         self.noResultWidget.setFont(Font.STANDARD_HUGE_FONT)
         self.noResultWidget.setAlignment(Qt.AlignCenter)
-        self.detailImage = ImageLabel(self)
+        self.detailImage = ImagePreview(self, dark=isDarkTheme())
         self.detailLabel = BodyLabel(self)
         self.downloadButton = PrimaryPushButton("Download", self)
         self.downloadButton.setIcon(FIF.DOWNLOAD)
+        self._transfer = DownloadSession(self.downloadButton, self)
         self.visitPageButton = PushButton("Visit Website", self)
         self.visitPageButton.setIcon(FIF.LINK)
 
@@ -133,6 +137,8 @@ class SearchWidget(QFrame):
             self.searchButton.setEnabled(True)
 
     def show_detail(self, row, col):
+        if self._transfer.busy:
+            return
         self.row = row
         self.separator_vertical_middle.setVisible(True)
         self.detailLabel.setVisible(True)
@@ -141,66 +147,74 @@ class SearchWidget(QFrame):
         self.visitPageButton.setVisible(True)
         self.visitPageButton.setDisabled(False)
         name = self.resultTable.item(row, 0).text()
-        pic = QPixmap()
+        self.detailImage.clear()
         if self.query_result[row][-1] == "COMMON":
             detailObj = crawler.Spider.Download(self.query_result[row][1])
+            image_url = detailObj.image_url
+            self.query_result[row][2] = image_url
+            if image_url != crawler.BLANK_IMG:
+                self.detailImage.loadUrl(image_url)
             download_result = detailObj.run()
             if not download_result:
                 self.detail_result = None
                 self.downloadButton.setDisabled(True)
                 self.detailLabel.setText("No download links available. Please retry or visit the website.")
-                self.detailImage.setVisible(False)
                 return
             self.detail_result = download_result[0]
-            image_url = self.query_result[row][2]
-            if image_url == crawler.BLANK_IMG:
-                pic.load(self.config["resources"]["blank_img"])
-            else:
-                filename = self.config["resources"]["detail_img"]
-                utils.Download.download_file(image_url, filename)
-                pic.load(filename)
         else:
             self.detail_result = [name, self.query_result[row][1], "No Info",
                                   "No Info\n**This is an archived Trainer**", "Before 2019-05"]
-            pic.load(self.config["resources"]["blank_img"])
+            self.detailImage.loadFile(self.config["resources"]["blank_img"])
             self.visitPageButton.setDisabled(True)
         content = f"Name: {name}\nLatest File: {self.detail_result[0]}\nSize: {self.detail_result[2]}\nDate: {self.detail_result[4]}\nDownloads: {self.detail_result[3]}"
         self.detailLabel.setText(content)
         self.detailLabel.setFont(Font.STANDARD_FONT)
-        self.detailImage.setImage(pic)
-        self.detailImage.setFixedSize(250, 250)
         self.check_download(name)
         self.resultTable.resizeColumnsToContents()
 
     def download_file(self):
-        print("Downloading", self.detail_result[1])
-        if ".rar" in self.detail_result[1]:
-            file_name = self.config["download"]["trainer"] + self.detail_result[0] + ".rar"
-        else:
-            file_name = self.config["download"]["trainer"] + self.detail_result[0] + ".zip"
-        print(file_name)
-        utils.Download.download_file(self.detail_result[1], file_name)
-        print("Download Completed.")
-        # if self.config["download"]["extract"]:
-        # Extract downloaded trainer
-        flag = utils.Download.extract_file(file_name)
-        if flag == -1:
-            print("WinRAR is probably not installed or added to PATH, cannot proceed extraction.")
-            os.remove(file_name)
-            mb = MessageBox("Error",
-                            "WinRAR is probably not installed or added to PATH, cannot proceed extraction.", self)
-            mb.yesButton.setText("Download WinRAR")
-            mb.cancelButton.setText("Cancel")
-            if mb.exec():
-                webbrowser.open("https://www.win-rar.com/download.html")
-            return None
-        else:
-            print("Extraction Completed.")
-            os.remove(file_name)
+        if self._transfer.busy or not self.detail_result or self.row is None:
+            return
+        self.config = utils.Data.load_config()["config"]
+        self._download_source = self.query_result[self.row][:]
+        self._set_download_busy(True)
+        task = partial(download_trainer, self.detail_result[1], self.detail_result[0],
+                       self.config["download"]["trainer"], self.config["download"]["extract"],
+                       referrer=self._download_source[1] if self._download_source[-1] == "COMMON" else None)
+        self._transfer.start(task, self._download_success, self._download_error, self._download_finished)
 
-        self.register_download()
+    def _set_download_busy(self, busy):
+        for widget in (self.resultTable, self.clearButton, self.searchLine, self.searchButton):
+            widget.setEnabled(not busy)
+        self.downloadButton.setEnabled(not busy)
+        if not busy:
+            self.check_input()
+
+    def _download_success(self, result):
+        if result.executable:
+            self.register_download(result.executable)
+            self.downloadButton.setText("Downloaded")
+            self.status("Download completed and added to library.")
+        else:
+            self.downloadButton.setText("Archive saved")
+            self.status("Archive saved. Automatic extraction is disabled.")
+            self.detailLabel.setText("Archive saved to:\n" + result.archive)
+        self.downloadButton.setToolTip(result.executable or result.archive)
+        self.downloadButton.setIcon(FIF.COMPLETED)
+
+    def _download_error(self, error):
+        self.downloadButton.setText("Retry download")
+        self.downloadButton.setIcon(FIF.DOWNLOAD)
+        self.detailLabel.setText("Download failed:\n" + error)
+        self.status("Download failed. You can retry.")
+
+    def _download_finished(self, succeeded):
+        self._set_download_busy(False)
+        self.downloadButton.setEnabled(not succeeded)
 
     def search(self):
+        if self._transfer.busy:
+            return
         if not self.searchLine.text().strip():
             return None
         if not NET:
@@ -248,6 +262,8 @@ class SearchWidget(QFrame):
         print(text)
 
     def clear(self):
+        if self._transfer.busy:
+            return
         self.noResultWidget.setVisible(False)
         self.waitingWidget.setVisible(True)
         self.resultTable.setVisible(False)
@@ -268,51 +284,20 @@ class SearchWidget(QFrame):
         link = self.query_result[self.row][1]
         webbrowser.open(link)
 
-    def register_download(self):
-        data = self.data
-        name = self.detail_result[0]
-        print("VRF: NAME:", name)
-        for original_file in os.listdir(self.config["download"]["trainer"]):
-            name = name.replace(".", "").replace("-FLiNG", "").replace(" ", "")
-            file = original_file.replace(" ", "").replace(".", "")
-            if name in file:
-                self.downloadButton.setIcon(FIF.COMPLETED)
-                self.downloadButton.setText("Downloaded")
-                self.downloadButton.setDisabled(True)
-                if self.config["cache"]["detail_image"]:
-                    pic_name = self.data["config"]["resources"][
-                                   "trainer_cover_folder"] + "\\" + utils.File.string_valid(
-                        self.resultTable.item(self.row, 0).text()) + "-image.jpg"
-                    if self.query_result[self.row][-1] == "COMMON":
-                        register = [self.resultTable.item(self.row, 0).text(),
-                                    data["config"]["download"]["trainer"] + original_file,
-                                    time.strftime('%Y-%m-%d', time.localtime()), pic_name, "COMMON",
-                                    self.query_result[self.row][1],
-                                    "REGISTERED"]
-                        try:
-                            image_key = ("blank_img" if self.query_result[self.row][2] == crawler.BLANK_IMG
-                                         else "detail_img")
-                            shutil.copyfile(self.data["config"]["resources"][image_key], pic_name)
-                        except FileExistsError:
-                            pass
-                    else:
-                        register = [self.resultTable.item(self.row, 0).text(),
-                                    data["config"]["download"]["trainer"] + original_file,
-                                    time.strftime('%Y-%m-%d', time.localtime()), "NONE",
-                                    "ARCHIVED", "NONE",
-                                    "REGISTERED"]
-                    data["files"]["trainers"].append(register)
-                    print("Registered:", register)
-                    utils.Data.json_write("data/data.json", data)
-                return None
-        self.downloadButton.setIcon(FIF.DOWNLOAD)
-        self.downloadButton.setText("Download")
-        self.downloadButton.setDisabled(False)
+    def register_download(self, executable):
+        cover = "NONE"
+        if (self._download_source[-1] == "COMMON" and self.config["cache"]["detail_image"]
+                and not self.detailImage.image.isNull()):
+            cover_path = str(Path(executable).parent / "preview.jpg")
+            if self.detailImage.image.save(cover_path, "JPG"):
+                cover = cover_path
+        register_trainer(self._download_source, executable, cover)
+        self.data = utils.Data.load_config()
 
     def check_download(self, name):
         self.data = utils.Data.load_config("data/data.json")
         for downloaded in self.data["files"]["trainers"]:
-            if name == downloaded[0]:
+            if name == downloaded[0] and os.path.isfile(downloaded[1]):
                 self.downloadButton.setIcon(FIF.COMPLETED)
                 self.downloadButton.setText("Downloaded")
                 self.downloadButton.setDisabled(True)

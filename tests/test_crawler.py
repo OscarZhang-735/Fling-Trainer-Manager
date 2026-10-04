@@ -117,6 +117,25 @@ class CrawlerTests(unittest.TestCase):
         self.assertEqual(result, [["One", "one.zip", "1 MB", "2", ""],
                                   ["Two", "two.zip", "3 MB", "4", "Today"]])
 
+    def test_detail_preview_prefers_page_cover_and_resolves_relative_urls(self):
+        html = '''<html><head><meta property="og:image" content="/uploads/cover.jpg"></head>
+        <body><div class="entry-inner"><img src="inline.jpg"></div>
+        <aside><img src="avatar.jpg"></aside></body></html>'''
+        with patch.object(Spider, "crawler", return_value=html):
+            detail = Spider.Download("https://flingtrainer.com/trainer/game/")
+        self.assertEqual(detail.image_url, "https://flingtrainer.com/uploads/cover.jpg")
+        self.assertEqual(detail.run(), [])
+
+    def test_detail_preview_uses_lazy_article_image_without_sidebar_or_data_urls(self):
+        html = '''<aside><img src="avatar.jpg"></aside>
+        <div class="entry-inner"><img src="data:image/gif;base64,placeholder" data-src="/cover.png"></div>'''
+        with patch.object(Spider, "crawler", return_value=html):
+            detail = Spider.Download("https://flingtrainer.com/trainer/game/")
+        self.assertEqual(detail.image_url, "https://flingtrainer.com/cover.png")
+        detail.text = '<aside><img src="avatar.jpg"></aside>'
+        detail.parser()
+        self.assertEqual(detail.image_url, BLANK_IMG)
+
     def test_timeout_and_http_errors_use_existing_error_sentinel(self):
         with patch("trainer_manager.services.crawler.requests.get", side_effect=requests.Timeout):
             self.assertEqual(Spider.crawler("https://example.com"), "error")

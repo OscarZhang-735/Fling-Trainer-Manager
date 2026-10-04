@@ -7,6 +7,7 @@ import zipfile
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlretrieve
+from uuid import uuid4
 
 CONFIG_PATH = "data/data.json"
 _INVALID_FILENAME_CHARS = str.maketrans({char: " " for char in '\\/:*?"<>|'})
@@ -124,6 +125,15 @@ class Data:
     def json_write(path, data):
         with open(path, "w") as f:
             json.dump(data, f)
+
+    @staticmethod
+    def json_write_atomic(path, data):
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(target.name + "." + uuid4().hex + ".tmp")
+        with temporary.open("x", encoding="utf-8") as output:
+            json.dump(data, output)
+        os.replace(temporary, target)
 
     @staticmethod
     def json_convert(json_string):

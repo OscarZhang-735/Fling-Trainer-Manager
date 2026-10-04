@@ -33,6 +33,8 @@ class Window(FramelessWindow):
         # create sub interface
         self.searchInterface = SearchWidget(self)
         self.libraryInterface = LibraryWidget(self)
+        self.searchInterface._transfer.finished.connect(
+            lambda ok: self.libraryInterface.table_default() if ok else None)
         self.gameInterface = GameWidget(self)
         self.settingInterface = SettingWidget(self)
         # self.settingInterface = Widget("Settings", self)
@@ -138,3 +140,12 @@ class Window(FramelessWindow):
     def resizeEvent(self, e):
         self.titleBar.move(46, 0)
         self.titleBar.resize(self.width() - 46, self.titleBar.height())
+
+    def closeEvent(self, event):
+        if self.searchInterface._transfer.busy or self.libraryInterface._transfer.busy:
+            event.ignore()
+            dialog = MessageBox("Download in progress", "Please wait for the download or update to finish before closing.", self)
+            dialog.cancelButton.hide()
+            dialog.exec()
+            return
+        super().closeEvent(event)
