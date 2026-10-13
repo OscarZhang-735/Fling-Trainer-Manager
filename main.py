@@ -7,7 +7,6 @@ from trainer_manager.ui.search import SearchWidget
 from trainer_manager.ui.library import LibraryWidget
 from trainer_manager.ui.games import GameWidget
 from trainer_manager.ui.settings import SettingWidget
-from trainer_manager.ui.help import HelpingWidget
 from trainer_manager.ui.saves import SavingWidget
 from trainer_manager.ui.patches import PatchWidget
 from trainer_manager.ui.navigation import AvatarWidget, CustomTitleBar

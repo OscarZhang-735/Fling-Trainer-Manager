@@ -45,7 +45,7 @@ class Data:
                 "program": {
                     "username": "Rinne",
                     "user_avatar": "resource/shoko.png",
-                    "icon": "resource/logo.png",
+                    "icon": "resource/favicon.ico",
                     "title": "TrainerManager",
                     "connection_allow": True
                 }

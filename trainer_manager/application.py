@@ -4,8 +4,10 @@ import sys
 import os
 import atexit
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from trainer_manager import services as utils
+from trainer_manager.runtime import ICON
 from trainer_manager.ui.window import Window
 
 
@@ -32,6 +34,7 @@ def main():
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(ICON))
     setup_check()
     w = Window()
     w.show()

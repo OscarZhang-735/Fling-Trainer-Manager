@@ -8,10 +8,7 @@ from qfluentwidgets import FluentIcon as FIF
 from qframelesswindow import FramelessWindow
 from trainer_manager.ui.search import SearchWidget
 from trainer_manager.ui.library import LibraryWidget
-from trainer_manager.ui.games import GameWidget
 from trainer_manager.ui.settings import SettingWidget
-from trainer_manager.ui.help import HelpingWidget
-from trainer_manager.ui.saves import SavingWidget
 from trainer_manager.ui.patches import PatchWidget
 from trainer_manager.ui.navigation import AvatarWidget
 from trainer_manager.ui.navigation import CustomTitleBar
@@ -35,15 +32,12 @@ class Window(FramelessWindow):
         self.libraryInterface = LibraryWidget(self)
         self.searchInterface._transfer.finished.connect(
             lambda ok: self.libraryInterface.table_default() if ok else None)
-        self.gameInterface = GameWidget(self)
         self.settingInterface = SettingWidget(self)
         self.settingInterface.can_apply_settings = lambda: not (
             self.searchInterface._transfer.busy or self.libraryInterface._transfer.busy)
         self.settingInterface.settingsSaved.connect(self.libraryInterface.table_default)
         self.settingInterface.settingsSaved.connect(self.searchInterface.refresh_repository_state)
         # self.settingInterface = Widget("Settings", self)
-        self.helpingInterface = HelpingWidget(self)
-        self.savingInterface = SavingWidget(self)
         self.patchInterface = PatchWidget(self)
         # initialize layout
         self.initLayout()
@@ -68,15 +62,9 @@ class Window(FramelessWindow):
         # self.navigationInterface.setAcrylicEnabled(True)
         self.addSubInterface(self.searchInterface, FIF.SEARCH, 'Search')
         self.addSubInterface(self.libraryInterface, FIF.APPLICATION, 'Trainers')
-        self.addSubInterface(self.gameInterface, FIF.GAME, "Games")
-        self.navigationInterface.addSeparator()
-        self.addSubInterface(self.savingInterface, FIF.FOLDER, 'Saves')
-        self.navigationInterface.addSeparator()
         # self.addSubInterface(self.patchInterface, FIF.DOCUMENT, 'Patches')
         # self.navigationInterface.addSeparator()
         # self.addSubInterface(self.settingsInterface, FIF.SETTING, 'Settings')
-        # add navigation items to scroll area
-        self.addSubInterface(self.helpingInterface, FIF.HELP, 'Help', NavigationItemPosition.SCROLL)
 
         # add custom widget to bottom
 
