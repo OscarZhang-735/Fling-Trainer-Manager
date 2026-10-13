@@ -1,122 +1,24 @@
 # Trainer Manager
 
-基于 PyQt5 的修改器搜索、下载和本地管理工具。
+Trainer Manager is a Windows desktop app for finding, downloading, updating, and launching FLiNG trainers. It searches the main and archive catalogs, keeps a local trainer library, and shows download progress and cover previews.
 
-## 代码结构
+## Run from source
 
-```text
-main.py                     原启动入口，同时保留原有类和函数的导入
-utils.py                    原工具 API 的兼容入口
-crawler.py                  原 Spider API 的兼容入口
-trainer_manager/
-    __main__.py             python -m trainer_manager 入口
-    application.py          Qt 启动、环境检查与退出处理
-    runtime.py              启动时的配置快照和共享字体
-    ui/
-        window.py           主窗口和导航装配
-        navigation.py       头像与标题栏
-        common.py           通用控件、进程工作线程和原错误占位类
-        preview.py          等比例预览、点击放大与异步封面加载
-        transfers.py        后台下载任务及按钮内嵌进度条
-        search.py           在线搜索与下载页面
-        library.py          本地修改器页面
-        settings.py         设置页面
-    services/
-        __init__.py         统一工具 API
-        storage.py          JSON、下载、解压与文件辅助操作
-        presentation.py     消息提示、报告辅助方法与字体配置
-        crawler.py          站点请求、搜索和详情解析
-        releases.py         standalone 版本筛选、版本记录与比较
-        transfers.py        流式下载、临时解压与原子替换安装
-        data.py/files.py/downloads.py/help.py/fonts.py
-                            旧服务路径的兼容导出
-tests/                      数据、解压和爬虫的离线回归检查
-resource/                   现用图片及深色、浅色主题样式
-data/data.json              原配置和业务数据
-```
-
-搜索目录及详情请求仍采用同步调用；图片加载、下载和更新在后台执行。
-旧模块导出的类与新模块是同一个类对象，保留兼容入口。
-修改实现时请编辑包内服务模块。界面和启动代码直接使用包内服务，
-不再依赖根目录的兼容入口。Qt 和 RAR 库在对应功能被调用时加载。
-
-本轮逻辑修正：
-
-- 归档搜索返回真正匹配的名称和链接；重复调用不再累积结果，重名条目保留各自链接。
-- 并行检索主站 All Trainers 目录和归档站，统一匹配关键词、合并结果并按链接去重；
-  单个来源失败时保留另一来源结果并显示提示。
-- 请求异常返回原有 `error` 标记，搜索和详情得到空列表；不再因代理错误直接退出。
-- 详情只解析一次；页面遇到无下载链接时禁用下载。
-- 搜索详情提取封面地址并异步加载，失败、超时和缺图时显示文字提示；
-  在线图片加载时显示旋转动画，ARCHIVED 条目直接显示配置中的 `blank_img` 备用图片。
-  搜索和修改器库均等比例显示图片，支持点击或按回车、空格放大。
-  网络封面使用有容量限制的内存缓存，切换条目取消旧请求，避免显示上一项图片。
-- 解压仅读取一次配置，使用上下文管理器关闭文件；识别大小写扩展名并排除 `.exe.txt`。
-  保留 ZIP 提取首个 EXE、RAR 提取全部 EXE 并返回最后一个名称的约定，缺少 RAR 工具仍返回 `-1`。
-- 文件名非法字符通过一次转换替换，保持原替换规则。
-
-## 下载与更新
-
-- 下载和更新按钮内显示进度条及百分比；服务器不提供文件大小时显示动态进度条和已下载大小，
-  解压时显示单独状态。任务进行中禁止重复触发，失败后可重试。
-- 请求携带来源页 Referer，兼容主站下载跳转；按实际内容识别 ZIP、RAR 或直接返回的 Windows EXE。
-  检查 HTTP 状态、下载长度和 EXE 的 PE 标识，拒绝网页响应、损坏下载及不安全的解压路径。
-  根据实际解压得到的 EXE 路径登记文件，关闭封面缓存也会正常入库；登记采用原子写入。
-- 主站下载会重新读取详情页，排除自动更新器和安装器，按发布时间选择最新 standalone。
-  入库时在 `files.trainer_versions` 记录下载链接、文件名、版本和发布时间，兼容原有修改器记录格式。
-- 点击更新先检查最新 standalone；版本一致且本地文件存在时提示已是最新，不创建下载目录或请求文件。
-  旧记录可通过原文件名或目录名识别版本并补记；无法确认版本时下载一次以建立准确记录。
-- 修改器保存为 `下载目录/游戏名称/原始文件名.exe`，封面与程序同级。
-  压缩包保留其中 EXE 的原名；直接下载 EXE 优先使用响应中的文件名或最终链接文件名。
-  下载和解压使用外部 `.download-cache` 临时目录，成功后替换已登记版本，不新增版本子目录。
-  下载或解压失败时不替换现有程序，任务结束清理本次临时文件；历史遗留目录需要另行确认清理。
-- 搜索下载遵循 `config.download.extract`：关闭时仅保存压缩包，不登记为可运行修改器。
-  直接返回的 EXE 无需解压，保存后可直接入库。
-  本地库的更新操作需要解压成功才会切换版本。下载完成后自动刷新本地库。
-- 任务进行中需等待完成后再关闭主窗口，避免后台线程被中断。
-
-## 启动与检查
-
-仓库目录在设置页点击 `Apply` 后立即生效，同时刷新本地库和搜索页的下载状态。
-本地库启动、刷新和切换仓库时，递归扫描当前目录中的 EXE（排除下载临时缓存），
-按实际文件重新生成记录；空目录显示空库，已不存在的文件不再显示。
-已知文件的来源和版本按文件路径保存在 `files.trainer_catalog`，切回旧仓库可恢复，
-新发现的文件可直接启动，但没有已知来源链接时不提供在线更新。
-切换仓库不会移动或删除原文件；下载、更新进行中需等待任务完成再应用设置。
-
-从项目根目录运行（相对资源路径的原约定未改动）：
+From the project root, with Python 3.12 installed:
 
 ```powershell
-python main.py
-# 或
-python -m trainer_manager
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py
 ```
 
-运行离线检查，不访问网络、不启动窗口、不读写实际业务文件。
-服务测试需要 `requests` 和 `lxml`，无需外部解压工具。
-预览和下载控件测试还需要 PyQt5；未安装时自动跳过，可设置 `QT_QPA_PLATFORM=offscreen` 无窗口运行：
+## Build locally
+
+Install Nuitka in the same environment, then run the Windows standalone build:
 
 ```powershell
-python -B -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv\Scripts\python.exe scripts\build_nuitka.py
 ```
 
-旧 UI 实验文件、未引用的图标和含失效绝对路径的打包脚本、配置已移除。
-目前仅提供上述源码启动方式，没有可用的打包配置。
-Python 字节码缓存保留在本地，并由 `.gitignore` 排除。
-
-## 当前已有的运行前提
-
-- `requirements.txt` 尚未完整声明所有导入依赖，例如 `qfluentwidgets`、
-  `qframelesswindow`、`bs4`；运行 GUI 需要先具备这些依赖及 PyQt5。
-- `Data.load_config()` 在内存中兼容旧配置并补齐缺失项，保留已有设置和记录；
-  读取时不会覆盖原配置文件。启动时创建配置指定的下载和缓存目录。
-- 现用资源位于 `resource/`，窗口样式已使用此路径。退出图片清理仍使用旧的
-  `resources/img_cache/image.jpg` 路径，尚未与配置中的缓存路径统一。
-- 用户名等配置仍在模块加载时读取；下载和更新开始时读取最新的下载设置。
-
-## 后续优化边界
-
-后续可单独调整持久化、网络请求和下载解压服务。
-每一步可在对应服务模块中增加回归验证后，再让页面调用新的接口。
-继续保持包内服务与 Qt 页面分离，避免在界面线程执行耗时的下载和解压操作。
-
+Run `build/nuitka/TrainerManager.dist/TrainerManager.exe` from the resulting folder. Distribute the entire `TrainerManager.dist` folder. For another build, pass a new `--output-dir` because the script does not overwrite an existing distribution.
