@@ -1,4 +1,6 @@
 PyQt5~=5.15.10
+PyQt-Fluent-Widgets
+PyQt5-Frameless-Window
 keyboard~=0.13.5
 requests~=2.32.3
 rarfile~=4.2

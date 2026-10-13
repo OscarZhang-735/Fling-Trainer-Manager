@@ -5,7 +5,7 @@
       <excludeFolder url="file://$MODULE_DIR$/venv" />
       <excludeFolder url="file://$MODULE_DIR$/gui" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.8 (TrainerManager)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.12 (Fling-Trainer-Manager)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
