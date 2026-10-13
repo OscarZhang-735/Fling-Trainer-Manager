@@ -37,6 +37,10 @@ class Window(FramelessWindow):
             lambda ok: self.libraryInterface.table_default() if ok else None)
         self.gameInterface = GameWidget(self)
         self.settingInterface = SettingWidget(self)
+        self.settingInterface.can_apply_settings = lambda: not (
+            self.searchInterface._transfer.busy or self.libraryInterface._transfer.busy)
+        self.settingInterface.settingsSaved.connect(self.libraryInterface.table_default)
+        self.settingInterface.settingsSaved.connect(self.searchInterface.refresh_repository_state)
         # self.settingInterface = Widget("Settings", self)
         self.helpingInterface = HelpingWidget(self)
         self.savingInterface = SavingWidget(self)

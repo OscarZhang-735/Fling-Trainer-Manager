@@ -18,6 +18,7 @@ from trainer_manager.ui.preview import ImagePreview
 from trainer_manager.ui.transfers import DownloadSession
 from trainer_manager.services.transfers import update_trainer, register_trainer, remember_release
 from trainer_manager.services.releases import installed_release
+from trainer_manager.services.repositories import refresh_repository
 
 
 class LibraryWidget(QFrame):
@@ -148,7 +149,7 @@ class LibraryWidget(QFrame):
             webbrowser.open(link)
 
     def open_folder(self):
-        path = self.data["config"]["download"]["trainer"]
+        path = utils.Data.load_config()["config"]["download"]["trainer"]
         path = os.path.normpath(path)
         print(path)
         subprocess.run(f'explorer "{path}"')
@@ -225,7 +226,13 @@ class LibraryWidget(QFrame):
     def table_default(self):
         if self._transfer.busy:
             return
-        self.data = utils.Data.load_config("data/data.json")
+        try:
+            self.data = refresh_repository()
+        except (OSError, ValueError) as error:
+            self.resultLabel.setText("Unable to read trainer repository: " + str(error))
+            return
+        self.row = None
+        self.current_exe = None
         self.separator_vertical_middle.setVisible(False)
         self.detailImage.setVisible(False)
         self.detailLabel.setVisible(False)
@@ -234,32 +241,11 @@ class LibraryWidget(QFrame):
         self.deleteButton.setVisible(False)
         self.updateButton.setVisible(False)
         self.resultTable.setVisible(True)
-        file_name_list = self.data["files"]["trainers"]
-        self.file_name_list = file_name_list
+        file_name_list = [row[:] for row in self.data["files"]["trainers"]]
         if self.data["config"]["library"]["filter"] == "REGISTERED_ONLY":
-            if len(file_name_list) <= 0:
-                self.resultTable.setVisible(False)
-                self.waitingWidget.setVisible(True)
-                self.waitingWidget.setText("No downloaded trainers found.")
-                return None
-        else:
-            names = []
-            for file_info in file_name_list:
-                names.append(file_info[1].split("\\")[-1])
-            for temp_file in os.listdir(self.data["config"]["download"]["trainer"]):
-                full_path = os.path.join(self.data["config"]["download"]["trainer"], temp_file)
-                if not os.path.isfile(full_path) or not temp_file.lower().endswith(".exe"):
-                    continue
-                if temp_file not in names:
-                    file_name_list.append([
-                        "[UNREGISTERED] " + temp_file,
-                        full_path,
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        "UNREGISTERED"
-                    ])
+            file_name_list = [row for row in file_name_list if row[-1] == "REGISTERED"]
+        self.file_name_list = file_name_list
+        self.noResultWidget.setVisible(False)
         self.fill_table(file_name_list)
 
     def show_detail(self, row, col):
@@ -287,7 +273,7 @@ class LibraryWidget(QFrame):
             self.visitPageButton.setDisabled(True)
             self.updateButton.setDisabled(True)
         else:
-            content = f"File: {self.file_name_list[row][0]} \n**This file is not registered**"
+            content = f"File: {self.file_name_list[row][0]} \n**No online source is known for this local file**"
             self.visitPageButton.setDisabled(True)
             self.updateButton.setDisabled(True)
         version = installed_release(self.data, self.file_name_list[row])

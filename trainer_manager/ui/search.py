@@ -11,7 +11,7 @@ from qfluentwidgets import isDarkTheme, BodyLabel, PushButton, TableWidget, Line
 from qfluentwidgets import FluentIcon as FIF
 from trainer_manager.services import crawler
 from trainer_manager import services as utils
-from trainer_manager.runtime import Font, NET
+from trainer_manager.runtime import Font
 from trainer_manager.ui.preview import ImagePreview
 from trainer_manager.ui.transfers import DownloadSession
 from trainer_manager.services.transfers import install_latest, register_trainer
@@ -216,7 +216,7 @@ class SearchWidget(QFrame):
             return
         if not self.searchLine.text().strip():
             return None
-        if not NET:
+        if not utils.Data.load_config()["config"]["program"]["connection_allow"]:
             utils.Help.info("Info", "You have disabled connection for the program.")
             return None
         self.noResultWidget.setVisible(False)
@@ -305,3 +305,9 @@ class SearchWidget(QFrame):
         self.downloadButton.setText("Download")
         self.downloadButton.setDisabled(False)
         return False
+
+    def refresh_repository_state(self):
+        self.data = utils.Data.load_config()
+        self.config = self.data["config"]
+        if self.row is not None and self.query_result and self.detail_result:
+            self.check_download(self.query_result[self.row][0])

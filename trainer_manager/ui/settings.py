@@ -1,17 +1,22 @@
 """ui.settings: extracted application components."""
 
 import os
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QFileDialog, QGridLayout
 from qfluentwidgets import MessageBox, BodyLabel, PushButton, LineEdit, PrimaryPushButton, HorizontalSeparator, SubtitleLabel, SwitchButton
 from trainer_manager import services as utils
 from trainer_manager.runtime import Font
+from trainer_manager.services.repositories import save_settings
 
 
 class SettingWidget(QFrame):
+    settingsSaved = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         # self.resize(400, 400)
         self.data = utils.Data.load_config("data/data.json")
+        self.can_apply_settings = lambda: True
         # self.data = utils.Data.json_read("./data/data.json")
         self.setObjectName("Setting")
         self.vBoxLayoutMain = QVBoxLayout(self)
@@ -118,7 +123,7 @@ class SettingWidget(QFrame):
         username = self.data["config"]["program"]["username"]
         avatar = self.data["config"]["program"]["user_avatar"]
         bool_img_cache = self.data["config"]["cache"]["detail_image"]
-        if self.data["config"]["library"]["filter"]:
+        if self.data["config"]["library"]["filter"] == "REGISTERED_ONLY":
             bool_library_filter = True
         else:
             bool_library_filter = False
@@ -140,7 +145,7 @@ class SettingWidget(QFrame):
                 self.trainerLineEdit.setText(dir_path)
             elif mode == "patch":
                 self.patchLineEdit.setText(dir_path)
-            elif mode == "games":
+            elif mode == "game":
                 self.gameLineEdit.setText(dir_path)
 
     def _select_file(self):
@@ -162,38 +167,44 @@ class SettingWidget(QFrame):
         path_list.append(self.gameLineEdit.text())
         path_list.append(self.patchLineEdit.text())
         path_list.append(self.avatarLineEdit.text())
-        for path in path_list:
-            if not os.path.exists(path):
+        for index, path in enumerate(path_list):
+            if not (os.path.isdir(path) if index < 3 else os.path.isfile(path)):
                 invalid_list.append(path)
         if len(invalid_list) > 0:
             w = MessageBox("Warning", f"The following paths you input are invalid:\n{invalid_list}", self)
             w.cancelButton.hide()
-            if w.exec():
-                self.data_init()
-                return False
-        if self.usernameLineEdit == "":
+            w.exec()
+            return False
+        if not self.usernameLineEdit.text().strip():
             w = MessageBox("Warning", "Username cannot be empty.", self)
             w.cancelButton.hide()
-            if w.exec():
-                self.data_init()
-                return False
+            w.exec()
+            return False
         return True
 
     def save_change(self):
+        if not self.can_apply_settings():
+            dialog = MessageBox("Download in progress", "Wait for downloads and updates to finish before applying settings.", self)
+            dialog.cancelButton.hide()
+            dialog.exec()
+            return False
         if not self.input_validating():
             return False
-        self.data["config"]["download"]["trainer"] = self.trainerLineEdit.text()
-        self.data["config"]["download"]["games"] = self.gameLineEdit.text()
-        self.data["config"]["download"]["patches"] = self.patchLineEdit.text()
-        self.data["config"]["cache"]["detail_image"] = self.detailImgSwitch.isChecked()
-        if self.trainerFilterSwitch.isChecked():
-            self.data["config"]["library"]["filter"] = "REGISTERED_ONLY"
-        else:
-            self.data["config"]["library"]["filter"] = "ALL"
-        self.data["config"]["program"]["connection_allow"] = self.connectionSwitch.isChecked()
-        self.data["config"]["program"]["username"] = self.usernameLineEdit.text()
-        self.data["config"]["program"]["user_avatar"] = self.avatarLineEdit.text()
-
-        print(self.data["config"])
-
-        utils.Data.json_write("data/data.json", self.data)
+        changes = {
+            "download": {"trainer": self.trainerLineEdit.text(), "games": self.gameLineEdit.text(),
+                         "patches": self.patchLineEdit.text()},
+            "cache": {"detail_image": self.detailImgSwitch.isChecked()},
+            "library": {"filter": "REGISTERED_ONLY" if self.trainerFilterSwitch.isChecked() else "ALL"},
+            "program": {"connection_allow": self.connectionSwitch.isChecked(),
+                        "username": self.usernameLineEdit.text(), "user_avatar": self.avatarLineEdit.text()},
+        }
+        try:
+            self.data = save_settings(changes)
+        except (OSError, ValueError) as error:
+            dialog = MessageBox("Settings not saved", str(error), self)
+            dialog.cancelButton.hide()
+            dialog.exec()
+            return False
+        self.data_init()
+        self.settingsSaved.emit()
+        return True
