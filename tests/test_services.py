@@ -31,7 +31,9 @@ class DataTests(unittest.TestCase):
                          ["Game", "game.exe", "2024", "cover.jpg", "UNKNOWN", "NONE", "REGISTERED"])
         self.assertEqual(result["config"]["library"]["filter"], "REGISTERED_ONLY")
         self.assertIn("username", result["config"]["program"])
-        self.assertEqual(result["files"]["games"], [])
+        self.assertNotIn("games", result["files"])
+        self.assertNotIn("save_file", result["files"])
+        self.assertNotIn("patches", result["config"]["download"])
         self.assertEqual(Data.normalize_config(result), result)
 
     def test_current_settings_and_records_take_precedence_over_legacy_values(self):
@@ -56,14 +58,19 @@ class DataTests(unittest.TestCase):
                 Data.load_config()
 
     def test_prepares_configured_directories_before_pages_need_them(self):
-        data = Data.normalize_config({"config": {"download": {"trainer": "custom/trainers"},
-                                                "resources": {"detail_img": "custom/cache/image.jpg"}}})
+        data = Data.normalize_config({"config": {"download": {"trainer": "custom/trainers",
+                                                            "games": "legacy/games", "patches": "legacy/patches"},
+                                                "resources": {"detail_img": "custom/cache/image.jpg",
+                                                              "cover_folder": "legacy/game_covers"}}})
         with patch.object(Path, "mkdir", autospec=True) as mkdir:
             Data.prepare_directories(data)
         created = [call.args[0] for call in mkdir.call_args_list]
         self.assertIn(Path("custom/trainers"), created)
         self.assertIn(Path("custom/cache"), created)
         self.assertIn(Path("resource/trainer_covers"), created)
+        self.assertNotIn(Path("legacy/games"), created)
+        self.assertNotIn(Path("legacy/patches"), created)
+        self.assertNotIn(Path("legacy/game_covers"), created)
         self.assertTrue(all(call.kwargs == {"parents": True, "exist_ok": True}
                             for call in mkdir.call_args_list))
 
@@ -73,7 +80,7 @@ class DataTests(unittest.TestCase):
             self.assertEqual(Data.json_read("data/data.json"), payload)
 
     def test_writes_unicode_and_nested_records(self):
-        payload = {"games": [["游戏", "D:\\Games\\game.exe"]], "enabled": True}
+        payload = {"trainers": [["游戏修改器", "D:\\Trainers\\trainer.exe"]], "enabled": True}
         output = io.StringIO()
         with patch("builtins.open") as opened:
             opened.return_value.__enter__.return_value = output

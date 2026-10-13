@@ -21,8 +21,6 @@ class Data:
                 "download": {
                     "path": ".\\trainers\\",
                     "trainer": "./trainers/",
-                    "games": "./games/",
-                    "patches": "./patches/",
                     "extract": True
                 },
                 "cache": {
@@ -32,15 +30,10 @@ class Data:
                     "detail_img": ".\\resource\\img_cache\\image.jpg",
                     "blank_img": "resource/anon.jpg",
                     "avatar_img": "resource/shoko.png",
-                    "cover_folder": "resource/game_covers",
                     "trainer_cover_folder": "resource/trainer_covers"
                 },
                 "library": {
                     "filter": "REGISTERED_ONLY"
-                },
-                "save_backup": {
-                    "max_number": 10,
-                    "auto_clean": False
                 },
                 "program": {
                     "username": "Rinne",
@@ -51,15 +44,9 @@ class Data:
                 }
             },
             "files": {
-                "save_file": [],
                 "downloaded": [],
                 "trainers": [],
-                "trainer_versions": {},
-                "game_cats": [
-                    "ALL",
-                    "UNCATEGORIZED",
-                ],
-                "games": []
+                "trainer_versions": {}
             }
         }
 
@@ -110,8 +97,8 @@ class Data:
     def prepare_directories(data):
         config = data["config"]
         directories = [Path(CONFIG_PATH).parent]
-        directories.extend(Path(config["download"][key]) for key in ("trainer", "games", "patches"))
-        directories.extend(Path(config["resources"][key]) for key in ("cover_folder", "trainer_cover_folder"))
+        directories.append(Path(config["download"]["trainer"]))
+        directories.append(Path(config["resources"]["trainer_cover_folder"]))
         directories.append(Path(config["resources"]["detail_img"]).parent)
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)

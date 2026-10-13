@@ -28,11 +28,11 @@ class RepositoryTests(unittest.TestCase):
             return rebuild_repository(data, root)
 
     def test_empty_repository_clears_active_records_and_versions_but_preserves_other_data(self):
-        self.data["files"]["games"] = [["My Game"]]
+        self.data["files"]["other_metadata"] = ["keep"]
         result = self.scan(self.data, self.new, [])
         self.assertEqual(result["files"]["trainers"], [])
         self.assertEqual(result["files"]["trainer_versions"], {})
-        self.assertEqual(result["files"]["games"], [["My Game"]])
+        self.assertEqual(result["files"]["other_metadata"], ["keep"])
         self.assertEqual(result["config"]["download"]["trainer"], str(self.new))
         self.assertEqual(self.data["files"]["trainers"], [self.record])
 

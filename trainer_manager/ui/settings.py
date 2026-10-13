@@ -27,15 +27,9 @@ class SettingWidget(QFrame):
         self.pathTitleLabel = BodyLabel("Download Path", self)
         self.pathTitleLabel.setFont(Font.STANDARD_MIDDLE_FONT)
         self.trainerLabel = BodyLabel("Trainer Download Path:", self)
-        self.gameLabel = BodyLabel("Game Download Path:", self)
-        self.patchLabel = BodyLabel("Patch Download Path:", self)
 
         self.trainerLineEdit = LineEdit(self)
-        self.gameLineEdit = LineEdit(self)
-        self.patchLineEdit = LineEdit(self)
         self.trainerButton = PushButton("Select", self)
-        self.gameButton = PushButton("Select", self)
-        self.patchButton = PushButton("Select", self)
         self.miscTitle = BodyLabel("Misc", self)
         self.miscTitle.setFont(Font.STANDARD_MIDDLE_FONT)
         self.detailImgSwitch = SwitchButton(self)
@@ -67,12 +61,6 @@ class SettingWidget(QFrame):
         self.pathBox.addWidget(self.trainerLabel, 1, 1)
         self.pathBox.addWidget(self.trainerLineEdit, 1, 2)
         self.pathBox.addWidget(self.trainerButton, 1, 3)
-        self.pathBox.addWidget(self.gameLabel, 2, 1)
-        self.pathBox.addWidget(self.gameLineEdit, 2, 2)
-        self.pathBox.addWidget(self.gameButton, 2, 3)
-        self.pathBox.addWidget(self.patchLabel, 3, 1)
-        self.pathBox.addWidget(self.patchLineEdit, 3, 2)
-        self.pathBox.addWidget(self.patchButton, 3, 3)
 
         self.miscBox.addWidget(self.detailImgSwitch, 1, 1)
         self.miscBox.addWidget(self.trainerFilterSwitch, 1, 2)
@@ -107,8 +95,6 @@ class SettingWidget(QFrame):
         self.vBoxLayoutMain.addLayout(self.operationBox)
 
         self.trainerButton.clicked.connect(lambda: self._select_folder("trainer"))
-        self.gameButton.clicked.connect(lambda: self._select_folder("game"))
-        self.patchButton.clicked.connect(lambda: self._select_folder("patch"))
         self.avatarButton.clicked.connect(self._select_file)
         self.applyButton.clicked.connect(self.save_change)
         self.undoButton.clicked.connect(self.data_init)
@@ -118,8 +104,6 @@ class SettingWidget(QFrame):
     def data_init(self):
         self.data = utils.Data.load_config("data/data.json")
         trainer_path = self.data["config"]["download"]["trainer"]
-        game_path = self.data["config"]["download"]["games"]
-        patch_path = self.data["config"]["download"]["patches"]
         username = self.data["config"]["program"]["username"]
         avatar = self.data["config"]["program"]["user_avatar"]
         bool_img_cache = self.data["config"]["cache"]["detail_image"]
@@ -130,8 +114,6 @@ class SettingWidget(QFrame):
         bool_connection = self.data["config"]["program"]["connection_allow"]
 
         self.trainerLineEdit.setText(trainer_path)
-        self.gameLineEdit.setText(game_path)
-        self.patchLineEdit.setText(patch_path)
         self.detailImgSwitch.setChecked(bool_img_cache)
         self.trainerFilterSwitch.setChecked(bool_library_filter)
         self.connectionSwitch.setChecked(bool_connection)
@@ -143,10 +125,6 @@ class SettingWidget(QFrame):
         if dir_path:
             if mode == "trainer":
                 self.trainerLineEdit.setText(dir_path)
-            elif mode == "patch":
-                self.patchLineEdit.setText(dir_path)
-            elif mode == "game":
-                self.gameLineEdit.setText(dir_path)
 
     def _select_file(self):
         w = QFileDialog(self)
@@ -164,11 +142,9 @@ class SettingWidget(QFrame):
         path_list = []
         invalid_list = []
         path_list.append(self.trainerLineEdit.text())
-        path_list.append(self.gameLineEdit.text())
-        path_list.append(self.patchLineEdit.text())
         path_list.append(self.avatarLineEdit.text())
         for index, path in enumerate(path_list):
-            if not (os.path.isdir(path) if index < 3 else os.path.isfile(path)):
+            if not (os.path.isdir(path) if index == 0 else os.path.isfile(path)):
                 invalid_list.append(path)
         if len(invalid_list) > 0:
             w = MessageBox("Warning", f"The following paths you input are invalid:\n{invalid_list}", self)
@@ -191,8 +167,7 @@ class SettingWidget(QFrame):
         if not self.input_validating():
             return False
         changes = {
-            "download": {"trainer": self.trainerLineEdit.text(), "games": self.gameLineEdit.text(),
-                         "patches": self.patchLineEdit.text()},
+            "download": {"trainer": self.trainerLineEdit.text()},
             "cache": {"detail_image": self.detailImgSwitch.isChecked()},
             "library": {"filter": "REGISTERED_ONLY" if self.trainerFilterSwitch.isChecked() else "ALL"},
             "program": {"connection_allow": self.connectionSwitch.isChecked(),

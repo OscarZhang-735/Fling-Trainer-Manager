@@ -9,7 +9,6 @@ from qframelesswindow import FramelessWindow
 from trainer_manager.ui.search import SearchWidget
 from trainer_manager.ui.library import LibraryWidget
 from trainer_manager.ui.settings import SettingWidget
-from trainer_manager.ui.patches import PatchWidget
 from trainer_manager.ui.navigation import AvatarWidget
 from trainer_manager.ui.navigation import CustomTitleBar
 from trainer_manager.runtime import ICON, TITLE
@@ -38,7 +37,6 @@ class Window(FramelessWindow):
         self.settingInterface.settingsSaved.connect(self.libraryInterface.table_default)
         self.settingInterface.settingsSaved.connect(self.searchInterface.refresh_repository_state)
         # self.settingInterface = Widget("Settings", self)
-        self.patchInterface = PatchWidget(self)
         # initialize layout
         self.initLayout()
 
@@ -62,10 +60,6 @@ class Window(FramelessWindow):
         # self.navigationInterface.setAcrylicEnabled(True)
         self.addSubInterface(self.searchInterface, FIF.SEARCH, 'Search')
         self.addSubInterface(self.libraryInterface, FIF.APPLICATION, 'Trainers')
-        # self.addSubInterface(self.patchInterface, FIF.DOCUMENT, 'Patches')
-        # self.navigationInterface.addSeparator()
-        # self.addSubInterface(self.settingsInterface, FIF.SETTING, 'Settings')
-
         # add custom widget to bottom
 
         self.navigationInterface.addWidget(

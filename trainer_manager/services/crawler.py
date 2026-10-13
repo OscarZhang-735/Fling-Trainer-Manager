@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from lxml import etree
-from bs4 import BeautifulSoup as bs
 
 from urllib.parse import urljoin, urlsplit, urldefrag
 from .releases import is_standalone, latest_release
@@ -54,30 +53,6 @@ class Spider:
     @staticmethod
     def error():
         pass
-
-    class NekoNyanPatchSearch:
-        # Temporally abandoned
-        def __init__(self):
-            self.url = "https://patches.nekonyansoft.com/"
-            self.text = Spider.crawler(self.url)
-            if self.text != "error":
-                self.parser()
-            else:
-                Spider.error()
-
-        def parser(self):
-            soup = bs(self.text, 'html.parser')
-            print(self.text)
-            buttons = soup.find_all('button', onClick=True)
-            download_links = []
-            print("Links")
-            for button in buttons:
-                onClick_value = button['onClick']
-                if 'window.open' in onClick_value:
-                    link = onClick_value.split("'")[1]
-                    download_links.append(link)
-            for link in download_links:
-                print("link:", link)
 
     class Search:
         def __init__(self, keyword):
